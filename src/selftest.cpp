@@ -173,8 +173,8 @@ int run_selftest() {
 
     // ------------------------------------------------- real E2EE chat
     std::printf("-- Noise XX + Double Ratchet session --\n");
-    Database db_a(base / "a");
-    Database db_b(base / "b");
+    Database db_a((base / "a").string());
+    Database db_b((base / "b").string());
     std::atomic<bool> got_msg{false};
     std::string got_text;
     Net net_a(alice, 47011, db_a,
