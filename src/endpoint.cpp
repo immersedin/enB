@@ -203,8 +203,8 @@ std::vector<Endpoint> local_endpoints(uint16_t port) {
         auto results = asio::ip::tcp::resolver{}.resolve(hostname, "");
         for (auto& r : results) {
             Endpoint ep;
-            auto addr = r.endpoint().address();
-            if (addr.is_loopback()) continue;
+            const asio::ip::address addr = r.endpoint().address();
+            if (addr.is_loopback() || addr.is_unspecified()) continue;
             ep.family = addr.is_v4() ? Endpoint::Family::IPv4
                                       : Endpoint::Family::IPv6;
             ep.addr = addr.to_string();
