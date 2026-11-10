@@ -58,14 +58,17 @@ p2p
 
 | Команда | Назначение |
 |---|---|
-| `/peerid` | показать свой Peer ID и DHT endpoint |
-| `/invite [ttl] [save <file>]` | создать подписанное приглашение (TTL сек, по умолчанию 300) |
+| `/peerid` | показать свой Peer ID и DHT endpoint (копируется в буфер обмена) |
+| `/invite [ttl] [save <file>]` | создать подписанное приглашение (TTL сек, по умолчанию 300); код копируется в буфер обмена |
 | `/connect <code\|peer-id\|name>` | принять приглашение / подключиться по Peer ID / по имени |
+| `/copyid <name>` | скопировать Peer ID контакта в буфер обмена |
 | `/friends` | контакты со статусом online/offline и Peer ID |
 | `/bootstrap <host:port>` | добавить DHT bootstrap-узел (сохраняется в config.ini) |
 | `/dht` | статистика DHT (известные узлы, записи, observed endpoint) |
 | `/add <name> <host> <port>` | ручное добавление по адресу (fallback) |
 | `/chat <name>`, `/close`, `/quit` | как раньше |
+
+Прокрутка консоли и чата: `PgUp`/`PgDn`, стрелки ↑/↓ или колесо мыши.
 
 ### Типичный сценарий
 

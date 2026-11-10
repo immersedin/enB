@@ -11,7 +11,9 @@
 // All actions are driven by slash commands typed into the input line:
 //   /help /friends /add <name> <host> <port> /remove <name>
 //   /chat <name> /close /quit
+//   /peerid /invite /connect /copyid
 // Plain text is sent to the currently open chat.
+// PgUp/PgDn, arrows and the mouse wheel scroll the console/chat panes.
 
 #include <algorithm>
 #include <atomic>
@@ -36,6 +38,7 @@
 #include <ftxui/component/screen_interactive.hpp>
 #include <ftxui/dom/elements.hpp>
 #include <ftxui/screen/color.hpp>
+#include <ftxui/screen/terminal.hpp>
 
 #include "crypto.h"
 #include "db.h"
@@ -67,6 +70,7 @@ struct FriendView {
     std::string display_name;
     std::vector<ChatLine> lines;
     bool history_loaded = false;
+    int chat_scroll = 0;  // lines scrolled up from the bottom; 0 = latest
 };
 
 struct Config {
@@ -144,6 +148,38 @@ int64_t unix_now() {
         .count();
 }
 
+// Text rows available for the scrollable pane. The fixed chrome around it
+// is: header (1) + separator (1) + input (1) + status line (1) +
+// frame borders (2).
+int pane_rows() {
+    return std::max(3, Terminal::Size().dimy - 6);
+}
+
+// Copy `text` to the OS clipboard via a platform tool. The payload goes
+// through a temp file so no shell escaping of the text is needed.
+bool copy_to_clipboard(const std::string& text) {
+    fs::path tmp = fs::temp_directory_path() / "p2p-chat-clipboard.txt";
+    {
+        std::ofstream f(tmp, std::ios::trunc);
+        f << text << "\n";
+        if (!f) return false;
+    }
+    const std::string q = "'" + tmp.string() + "'";
+#ifdef _WIN32
+    return std::system(("clip < " + q).c_str()) == 0;
+#elif defined(__APPLE__)
+    return std::system(("pbcopy < " + q).c_str()) == 0;
+#else
+    if (std::system(("wl-copy < " + q + " 2>/dev/null").c_str()) == 0)
+        return true;
+    if (std::system(("xclip -selection clipboard < " + q +
+                     " 2>/dev/null").c_str()) == 0)
+        return true;
+    return std::system(("xsel --clipboard --input < " + q +
+                        " 2>/dev/null").c_str()) == 0;
+#endif
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------
@@ -164,6 +200,7 @@ struct ChatApp {
     Mode mode = Mode::Home;
 
     std::vector<std::string> console;  // command output on Home screen
+    int console_scroll = 0;            // lines scrolled up; 0 = latest
     std::string notice;
 
     std::mutex inbox_mu;
@@ -278,6 +315,7 @@ void reload_friends(ChatApp& app) {
 void open_chat(ChatApp& app, FriendView& fv) {
     app.open_friend_id = fv.f.id;
     app.mode = ChatApp::Mode::Chat;
+    fv.chat_scroll = 0;
     if (!fv.history_loaded) {
         fv.lines.clear();
         for (auto& m : app.db.messages_for(fv.f.id))
@@ -329,6 +367,7 @@ const CmdSpec kCommands[] = {
     {"/open", "<name>"},
     {"/connect", "<invite-code | peer-id | name>"},
     {"/invite", "[ttl] [save <file>]"},
+    {"/copyid", "<name>"},
     {"/bootstrap", "<host:port>"},
 };
 
@@ -340,7 +379,7 @@ const CmdSpec* find_cmd(const std::string& name) {
 
 bool takes_friend_name(const std::string& cmd) {
     return cmd == "/chat" || cmd == "/open" || cmd == "/remove" ||
-           cmd == "/connect";
+           cmd == "/connect" || cmd == "/copyid";
 }
 
 // Live hint shown in the status line while the user types a command.
@@ -417,7 +456,9 @@ void execute_command(ChatApp& app, const std::string& line,
         say(app, "  /connect <arg>        connect by invite code, peer id");
         say(app, "                       or friend name");
         say(app, "  /invite [ttl] [save <file>]  create invitation");
-        say(app, "  /peerid               show this peer's id");
+        say(app, "                       (code is copied to clipboard)");
+        say(app, "  /peerid               show & copy this peer's id");
+        say(app, "  /copyid <name>        copy friend's peer id");
         say(app, "  /dht                  DHT status");
         say(app, "  /bootstrap <host:port>  add DHT bootstrap node");
         say(app, "  /close                back to console");
@@ -425,6 +466,7 @@ void execute_command(ChatApp& app, const std::string& line,
         say(app, "  /version              show version info");
         say(app, "  /quit                 exit");
         say(app, "any other text is sent to the open chat");
+        say(app, "PgUp/PgDn, arrows, wheel: scroll console/chat");
     } else if (cmd == "/friends") {
         if (app.friends.empty()) {
             say(app, "no friends — use /add <name> <host> <port>");
@@ -550,8 +592,13 @@ void execute_command(ChatApp& app, const std::string& line,
         }).detach();
         say(app, "checking for updates...");
     } else if (cmd == "/peerid") {
-        say(app, "peer id: " + peer_id_hex(app.identity));
-        say(app, "short:   " + short_id(peer_id_hex(app.identity)));
+        std::string pid = peer_id_hex(app.identity);
+        say(app, "peer id: " + pid);
+        say(app, "short:   " + short_id(pid));
+        if (copy_to_clipboard(pid))
+            say(app, "peer id copied to clipboard");
+        else
+            say(app, "could not copy to clipboard");
         if (app.dht) {
             Endpoint ue{Endpoint::Family::IPv6, "::",
                         static_cast<uint16_t>(app.config.dht_port)};
@@ -646,6 +693,10 @@ void execute_command(ChatApp& app, const std::string& line,
             say(app, "Invitation code:");
             for (size_t i = 0; i < code.size(); i += 96)
                 say(app, "  " + code.substr(i, 96));
+            if (copy_to_clipboard(code))
+                say(app, "code copied to clipboard");
+            else
+                say(app, "could not copy to clipboard");
             say(app, "(use /invite save <file> to export, "
                      "/connect <code> to redeem)");
         }
@@ -690,6 +741,27 @@ void execute_command(ChatApp& app, const std::string& line,
         if (!handled)
             say(app, "unrecognized argument — not an invitation code, "
                      "peer id, or contact name");
+    } else if (cmd == "/copyid") {
+        if (args.size() != 2) {
+            say(app, "usage: /copyid <name>");
+            return;
+        }
+        auto* fv = app.find_by_name(args[1]);
+        if (!fv) {
+            say(app, "no such friend: " + args[1]);
+            return;
+        }
+        std::string key = !fv->peer_key.empty() ? fv->peer_key
+                                                : fv->f.x25519_pub;
+        if (key.empty()) {
+            say(app, "peer id unknown — connect to " + args[1] + " first");
+            return;
+        }
+        if (copy_to_clipboard(key))
+            say(app, "peer id of " + fv->display_name +
+                       " copied to clipboard");
+        else
+            say(app, "could not copy to clipboard");
     } else if (cmd == "/quit" || cmd == "/exit") {
         app.net->stop();
         if (app.dht) app.dht->stop();
@@ -727,33 +799,89 @@ Element render_friends(const ChatApp& app) {
            frame | flex;
 }
 
+// Largest scroll offset that still shows the oldest line.
+int max_scroll(size_t total) {
+    int visible = pane_rows();
+    if (total > static_cast<size_t>(visible)) --visible;
+    if (visible < 1) visible = 1;
+    return total > static_cast<size_t>(visible)
+               ? static_cast<int>(total - visible)
+               : 0;
+}
+
+// Range of `total` lines visible with `scroll` lines hidden below the
+// viewport (scroll == 0 shows the newest lines). Returns [start, end).
+std::pair<size_t, size_t> scroll_window(size_t total, int scroll,
+                                        int visible) {
+    if (visible < 1) visible = 1;
+    size_t cap = static_cast<size_t>(visible);
+    size_t off = total > cap ? std::min(static_cast<size_t>(std::max(
+                                              scroll, 0)),
+                                          total - cap)
+                             : 0;
+    size_t end = total - off;
+    size_t start = end > cap ? end - cap : 0;
+    return {start, end};
+}
+
 Element render_console(const ChatApp& app) {
     std::vector<Element> rows;
-    size_t start = app.console.size() > 200 ? app.console.size() - 200 : 0;
-    for (size_t i = start; i < app.console.size(); ++i)
-        rows.push_back(text(app.console[i]));
-    if (rows.empty()) {
+    const size_t total = app.console.size();
+    int visible = pane_rows();
+    bool overflow = total > static_cast<size_t>(visible);
+    if (overflow) --visible;  // room for the scroll indicator
+    auto [start, end] =
+        scroll_window(total, app.console_scroll, visible);
+    if (overflow) {
+        rows.push_back(text("  lines " + std::to_string(start + 1) + "-" +
+                            std::to_string(end) + " of " +
+                            std::to_string(total) +
+                            (app.console_scroll > 0
+                                 ? "  (scrolled up — PgDn/PgUp)"
+                                 : "")) |
+                       color(Color::GrayDark));
+    }
+    if (start == end) {
         rows.push_back(text("P2P Secure Chat") | bold |
                        color(Color::Cyan));
         rows.push_back(text("type /help for commands") |
                        color(Color::GrayDark));
+    } else {
+        for (size_t i = start; i < end; ++i)
+            rows.push_back(text(app.console[i]));
     }
     return vbox(std::move(rows)) | flex | frame;
 }
 
 Element render_chat_lines(const FriendView& fv) {
     std::vector<Element> rows;
-    size_t start = fv.lines.size() > 200 ? fv.lines.size() - 200 : 0;
-    for (size_t i = start; i < fv.lines.size(); ++i) {
-        const auto& l = fv.lines[i];
-        rows.push_back(hbox({
-            text(l.outgoing ? "you: " : fv.display_name + ": ") |
-                color(l.outgoing ? Color::Green : Color::Cyan) | bold,
-            text(l.text),
-        }));
+    const size_t total = fv.lines.size();
+    int visible = pane_rows();
+    bool overflow = total > static_cast<size_t>(visible);
+    if (overflow) --visible;  // room for the scroll indicator
+    auto [start, end] = scroll_window(total, fv.chat_scroll, visible);
+    if (overflow) {
+        rows.push_back(text("  lines " + std::to_string(start + 1) + "-" +
+                            std::to_string(end) + " of " +
+                            std::to_string(total) +
+                            (fv.chat_scroll > 0
+                                 ? "  (scrolled up — PgDn/PgUp)"
+                                 : "")) |
+                       color(Color::GrayDark));
     }
-    if (rows.empty())
-        rows.push_back(text("  no messages yet") | color(Color::GrayDark));
+    if (start == end) {
+        rows.push_back(text("  no messages yet") |
+                       color(Color::GrayDark));
+    } else {
+        for (size_t i = start; i < end; ++i) {
+            const auto& l = fv.lines[i];
+            rows.push_back(hbox({
+                text(l.outgoing ? "you: " : fv.display_name + ": ") |
+                    color(l.outgoing ? Color::Green : Color::Cyan) | bold,
+                text(l.text),
+            }));
+        }
+    }
     return vbox(std::move(rows)) | flex | frame;
 }
 
@@ -942,8 +1070,49 @@ int main(int argc, char** argv) {
     auto root =
         Container::Vertical({header, sep(), body | flex, input, status_line});
 
+    auto scroll_by = [&app, &screen](int delta) {
+        if (app.mode == ChatApp::Mode::Chat) {
+            if (auto* fv = app.find_by_id(app.open_friend_id)) {
+                int mx = max_scroll(fv->lines.size());
+                fv->chat_scroll =
+                    std::clamp(fv->chat_scroll + delta, 0, mx);
+            }
+        } else {
+            int mx = max_scroll(app.console.size());
+            app.console_scroll =
+                std::clamp(app.console_scroll + delta, 0, mx);
+        }
+        screen.PostEvent(Event::Custom);
+    };
+
     auto global = CatchEvent(root, [&](Event event) {
         drain_inbox(app);
+        if (event == Event::PageUp) {
+            scroll_by(pane_rows());
+            return true;
+        }
+        if (event == Event::PageDown) {
+            scroll_by(-pane_rows());
+            return true;
+        }
+        if (event == Event::ArrowUp) {
+            scroll_by(1);
+            return true;
+        }
+        if (event == Event::ArrowDown) {
+            scroll_by(-1);
+            return true;
+        }
+        if (event.is_mouse()) {
+            if (event.mouse().button == Mouse::WheelUp) {
+                scroll_by(3);
+                return true;
+            }
+            if (event.mouse().button == Mouse::WheelDown) {
+                scroll_by(-3);
+                return true;
+            }
+        }
         return false;  // let the focused input handle keys
     });
 
