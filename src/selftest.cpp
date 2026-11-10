@@ -9,6 +9,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <future>
+#include <memory>
 #include <string>
 #include <thread>
 
@@ -182,17 +183,19 @@ int run_selftest() {
 
     // ------------------------------------------------- real E2EE chat
     std::printf("-- Noise XX + Double Ratchet session --\n");
-    Database db_a((base / "a").string());
-    Database db_b((base / "b").string());
+    // unique_ptr so the SQLite handles are closed before remove_all —
+    // Windows refuses to delete files that are still open.
+    auto db_a = std::make_unique<Database>((base / "a").string());
+    auto db_b = std::make_unique<Database>((base / "b").string());
     std::atomic<bool> got_msg{false};
     std::string got_text;
-    Net net_a(alice, 47011, db_a,
+    Net net_a(alice, 47011, *db_a,
               [&](const std::string&, const std::string& text) {
                   got_text = text;
                   got_msg = true;
               },
               [](int64_t, const std::string&, bool, const std::string&) {});
-    Net net_b(bob, 47012, db_b,
+    Net net_b(bob, 47012, *db_b,
               [](const std::string&, const std::string&) {},
               [](int64_t, const std::string&, bool,
                  const std::string&) {});
@@ -237,6 +240,8 @@ int run_selftest() {
 
     net_b.stop();
     net_a.stop();
+    db_a.reset();
+    db_b.reset();
     fs::remove_all(base);
 
     std::printf("== %s (%d failure%s) ==\n",
