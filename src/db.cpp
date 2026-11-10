@@ -10,7 +10,12 @@
 #include <fstream>
 #include <random>
 #include <sstream>
+#ifdef _WIN32
+#include <io.h>
+#define chmod _chmod
+#else
 #include <sys/stat.h>
+#endif
 
 namespace fs = std::filesystem;
 
