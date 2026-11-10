@@ -44,6 +44,7 @@ jobs:
         shell: pwsh
         run: |
           $env:VCPKG_DEFAULT_BINARY_CACHE = "${{ runner.temp }}\vcpkg-binary-cache"
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
           $vcpkg = "${env:VCPKG_INSTALLATION_ROOT}/vcpkg.exe"
           & $vcpkg install asio libsodium sqlcipher ftxui --triplet x64-windows-static-md
 
