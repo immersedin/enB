@@ -230,6 +230,23 @@ bool Database::set_identity_keys(int64_t id, const std::string& x25519_pub,
     return ok;
 }
 
+bool Database::update_friend_endpoint(int64_t id, const std::string& host,
+                                      int port) {
+    if (!impl_ || !impl_->handle || id < 0) return false;
+    sqlite3_stmt* st = nullptr;
+    if (sqlite3_prepare_v2(
+            impl_->handle,
+            "UPDATE friends SET host=?, port=? WHERE id=?", -1, &st,
+            nullptr) != SQLITE_OK)
+        return false;
+    sqlite3_bind_text(st, 1, host.c_str(), -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 2, port);
+    sqlite3_bind_int64(st, 3, id);
+    bool ok = sqlite3_step(st) == SQLITE_DONE;
+    sqlite3_finalize(st);
+    return ok;
+}
+
 void Database::add_message(int64_t friend_id, bool outgoing,
                            const std::string& body) {
     if (!impl_ || !impl_->handle || friend_id < 0) return;

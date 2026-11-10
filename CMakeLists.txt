@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(p2p VERSION 0.1.3 LANGUAGES CXX)
+project(p2p VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -70,7 +70,11 @@ add_executable(p2p
     src/main.cpp
     src/crypto.cpp
     src/db.cpp
+    src/dht.cpp
+    src/endpoint.cpp
+    src/invite.cpp
     src/net.cpp
+    src/selftest.cpp
     src/update.cpp
 )
 

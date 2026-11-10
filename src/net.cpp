@@ -2,6 +2,8 @@
 
 #include <sodium.h>
 
+#include "dht.h"
+
 #include <chrono>
 #include <cstring>
 #include <filesystem>
@@ -215,12 +217,15 @@ Net::Net(Identity& identity, int listen_port, Database& db,
              on_message,
          std::function<void(int64_t, const std::string&, bool,
                             const std::string&)>
-             on_status)
+             on_status,
+         Dht* dht, std::function<void(const std::string&)> on_notice)
     : id_(identity),
       listen_port_(listen_port),
       db_(db),
       on_message_(std::move(on_message)),
-      on_status_(std::move(on_status)) {}
+      on_status_(std::move(on_status)),
+      dht_(dht),
+      on_notice_(std::move(on_notice)) {}
 
 Net::~Net() { stop(); }
 
@@ -275,7 +280,103 @@ void Net::accept_loop() {
 }
 
 void Net::connect_to(const Friend& friend_) {
-    std::thread([this, friend_] { handle_outgoing(friend_); }).detach();
+    // Peer-id-only friend: resolve through the DHT.
+    if (friend_.host.empty() && !friend_.x25519_pub.empty()) {
+        std::thread([this, friend_] { resolve_and_connect(friend_); })
+            .detach();
+        return;
+    }
+    if (friend_.host.empty()) {
+        on_status_(-1, friend_.x25519_pub, false, friend_.name);
+        return;
+    }
+    std::thread([this, friend_] {
+        if (!dial_friend(friend_))
+            on_status_(-1, friend_.x25519_pub, false, friend_.name);
+    }).detach();
+}
+
+void Net::resolve_and_connect(const Friend& friend_) {
+    crypto::Key32 peer_id{};
+    if (!crypto::from_hex32(friend_.x25519_pub, peer_id)) {
+        on_notice_("invalid peer id for " + friend_.name);
+        on_status_(-1, friend_.x25519_pub, false, friend_.name);
+        return;
+    }
+    auto work = std::make_shared<Friend>(friend_);
+    if (!dht_ || !dht_->find_peer(peer_id,
+                                 [this, work, peer_id](
+                                     const std::optional<PeerRecord>& rec) {
+        resolve_with_record(work, peer_id, rec);
+    })) {
+        on_notice_("DHT unavailable — cannot resolve " + friend_.name);
+        // Fall back to the last known endpoint, if any.
+        if (!friend_.host.empty()) {
+            std::thread([this, friend_] {
+                if (!dial_friend(friend_))
+                    on_status_(-1, friend_.x25519_pub, false,
+                               friend_.name);
+            }).detach();
+        } else {
+            on_status_(-1, friend_.x25519_pub, false, friend_.name);
+        }
+        return;
+    }
+}
+
+void Net::resolve_with_record(
+    const std::shared_ptr<Friend>& work, const crypto::Key32& peer_id,
+    const std::optional<PeerRecord>& rec) {
+        std::vector<Friend> candidates;
+        if (rec) {
+            // Bind the signed record's Ed25519 key only when we have no
+            // previously verified key — otherwise the stored key must
+            // win so that a key change is still detected (and warned
+            // about) at handshake time.
+            if (work->ed25519_pub.empty())
+                work->ed25519_pub = crypto::to_hex(rec->ed_pub.data(), 32);
+            // Adopt the self-reported name only for placeholder contacts.
+            if (!rec->name.empty() &&
+                (work->name.empty() || work->name.rfind("peer-", 0) == 0))
+                work->name = rec->name;
+            for (auto& ep : rec->endpoints) {
+                Friend t = *work;
+                t.host = ep.addr;
+                t.port = ep.port;
+                candidates.push_back(t);
+            }
+        }
+        // Stored endpoint as an extra candidate (dedup by host:port).
+        if (!work->host.empty() && work->port > 0) {
+            bool dup = false;
+            for (auto& c : candidates)
+                if (c.host == work->host && c.port == work->port) {
+                    dup = true;
+                    break;
+                }
+            if (!dup) candidates.push_back(*work);
+        }
+        if (candidates.empty()) {
+            on_notice_("no address found for " + work->name +
+                       " (peer may be offline or DHT unreachable)");
+            on_status_(-1, work->x25519_pub, false, work->name);
+            return;
+        }
+        // Dial all candidates in parallel; the first completed Noise
+        // handshake wins (register_session deduplicates by peer key).
+        auto remaining = std::make_shared<std::atomic<int>>(
+            static_cast<int>(candidates.size()));
+        auto any_ok = std::make_shared<std::atomic<bool>>(false);
+        for (auto& cand : candidates) {
+            std::thread([this, cand, remaining, any_ok]() {
+                bool ok = dial_friend(cand);
+                if (ok) any_ok->store(true);
+                if (--(*remaining) == 0 && !any_ok->load() &&
+                    !has_session(cand.x25519_pub)) {
+                    on_status_(-1, cand.x25519_pub, false, cand.name);
+                }
+            }).detach();
+        }
 }
 
 // Builds the session object once the Noise handshake has completed.
@@ -371,6 +472,31 @@ void Net::handle_incoming(tcp::socket sock) {
                                  &id_.x25519.pub))
             return;
 
+        // Identity-key change detection for known contacts: the peer id
+        // (x25519 static) matches an existing friend but the Ed25519 key
+        // differs from what we verified before — reject and warn.
+        std::string peer_x_hex =
+            crypto::to_hex(noise.remote_static().data(), 32);
+        std::string peer_ed_hex = crypto::to_hex(parsed3.ed_pub.data(), 32);
+        asio::error_code ep_ec;
+        auto remote_ep = sock.remote_endpoint(ep_ec);
+        if (auto known = db_.find_friend_by_key(peer_x_hex)) {
+            if (!known->ed25519_pub.empty() &&
+                known->ed25519_pub != peer_ed_hex) {
+                if (on_notice_)
+                    on_notice_("WARNING: " + known->name +
+                               " presented a changed identity key — "
+                               "incoming connection rejected. Verify "
+                               "out-of-band, then /remove and re-add.");
+                return;
+            }
+            if (known->host.empty() && !ep_ec) {
+                db_.update_friend_endpoint(
+                    known->id, remote_ep.address().to_string(),
+                    remote_ep.port());
+            }
+        }
+
         auto session = finalize_session(
             std::move(sock), std::move(noise), parsed3.name, parsed3.ed_pub,
             parsed3.ratchet_pub, std::move(my_ratchet), false);
@@ -405,7 +531,10 @@ void Net::handle_incoming(tcp::socket sock) {
     }
 }
 
-void Net::handle_outgoing(const Friend& friend_) {
+// Single-endpoint outgoing dial: TCP connect + Noise XX handshake +
+// identity verification + session registration. Returns true when the
+// peer is (or already was) reachable with a verified identity.
+bool Net::dial_friend(const Friend& friend_) {
     try {
         tcp::resolver resolver(io_);
         auto endpoints = resolver.resolve(friend_.host,
@@ -413,52 +542,97 @@ void Net::handle_outgoing(const Friend& friend_) {
         tcp::socket sock(io_);
         asio::error_code ec;
         asio::connect(sock, endpoints, ec);
-        if (ec) {
-            on_status_(-1, friend_.x25519_pub, false, friend_.name);
-            return;
-        }
+        if (ec) return false;
 
         crypto::NoiseXX noise(crypto::NoiseXX::Role::Initiator,
                               id_.x25519.priv, id_.x25519.pub);
         crypto::KeyPair my_ratchet = crypto::x25519_generate();
 
         crypto::Bytes m1 = noise.write_msg1({});
-        if (!write_frame(sock, m1)) return;
+        if (!write_frame(sock, m1)) return false;
 
         crypto::Bytes f2, p2;
-        if (!read_frame(sock, f2)) return;
-        if (!noise.read_msg2(f2, p2)) return;
+        if (!read_frame(sock, f2)) return false;
+        if (!noise.read_msg2(f2, p2)) return false;
+
+        // Peer-id check: the responder's Noise static key IS the peer
+        // id. If we know who we are talking to, a mismatch means we
+        // reached a different host (stale/wrong DHT address, MITM) —
+        // abort before revealing anything else.
+        if (!friend_.x25519_pub.empty()) {
+            std::string remote_hex =
+                crypto::to_hex(noise.remote_static().data(), 32);
+            if (remote_hex != friend_.x25519_pub) {
+                if (on_notice_)
+                    on_notice_("peer id mismatch for " + friend_.name +
+                               " — endpoint serves a different identity, "
+                               "connection refused");
+                return false;
+            }
+        }
 
         ParsedPayload parsed2;
-        if (!parse_handshake_payload(p2, parsed2)) return;
+        if (!parse_handshake_payload(p2, parsed2)) return false;
         if (!verify_identity_sig(parsed2, noise.remote_static(), nullptr))
-            return;
+            return false;
+
+        // Identity-key change detection: if we have previously verified
+        // this peer's Ed25519 key and it changed, warn loudly and refuse
+        // rather than silently accepting a new identity.
+        if (!friend_.ed25519_pub.empty()) {
+            std::string ed_hex = crypto::to_hex(parsed2.ed_pub.data(), 32);
+            if (ed_hex != friend_.ed25519_pub) {
+                if (on_notice_)
+                    on_notice_("WARNING: identity key changed for " +
+                               friend_.name +
+                               " — possible impersonation. Connection "
+                               "refused. Verify the new key out-of-band, "
+                               "then /remove and re-add the contact.");
+                return false;
+            }
+        }
 
         crypto::Bytes p3 = build_handshake_payload(
             id_, id_.name, my_ratchet, &noise.remote_static());
         crypto::Bytes m3 = noise.write_msg3(p3);
-        if (!write_frame(sock, m3)) return;
+        if (!write_frame(sock, m3)) return false;
 
         auto session = finalize_session(
             std::move(sock), std::move(noise), parsed2.name, parsed2.ed_pub,
             parsed2.ratchet_pub, std::move(my_ratchet), true);
-        if (!session) return;
+        if (!session) return false;
         session->peer.host = friend_.host;
         session->peer.port = friend_.port;
         // Prefer the locally configured friend name.
         session->peer.name = friend_.name;
 
-        // Persist the peer identity keys first so register_session can
-        // resolve the friend id for status reporting.
-        if (friend_.id >= 0 &&
-            (friend_.x25519_pub.empty() ||
-             friend_.x25519_pub != session->peer.x25519_pub)) {
-            db_.set_identity_keys(friend_.id, session->peer.x25519_pub,
-                                  session->peer.ed25519_pub);
+        // Another parallel dial may have won the race.
+        if (find_session(session->peer.x25519_pub)) return true;
+
+        // Persist the peer identity keys so register_session can resolve
+        // the friend id for status reporting, and future connects can
+        // detect key changes. Save when the peer id is new to this
+        // friend, or when the stored record still lacks the Ed25519 key
+        // (e.g. a DHT friend whose ed key came from the signed record).
+        if (friend_.id >= 0) {
+            bool save = friend_.x25519_pub.empty() ||
+                        friend_.x25519_pub != session->peer.x25519_pub;
+            if (!save) {
+                if (auto stored = db_.find_friend_by_key(
+                        session->peer.x25519_pub))
+                    save = stored->ed25519_pub.empty();
+            }
+            if (save)
+                db_.set_identity_keys(friend_.id,
+                                      session->peer.x25519_pub,
+                                      session->peer.ed25519_pub);
+            db_.update_friend_endpoint(friend_.id, friend_.host,
+                                       friend_.port);
         }
         register_session(std::move(session));
+        return true;
     } catch (...) {
-        on_status_(-1, friend_.x25519_pub, false, friend_.name);
+        return false;
     }
 }
 
