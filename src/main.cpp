@@ -393,6 +393,9 @@ int main() {
     }
 
     const char* home = std::getenv("HOME");
+#ifdef _WIN32
+    if (!home) home = std::getenv("USERPROFILE");
+#endif
     std::string data_dir = std::string(home ? home : ".") + "/.p2p-chat";
     Config config = load_config(data_dir + "/config.ini");
     if (config.port <= 0 || config.port > 65535) config.port = 5555;
