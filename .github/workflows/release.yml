@@ -30,10 +30,20 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install asio libsodium sqlcipher ftxui
 
+      - name: Cache vcpkg binary cache (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\vcpkg-binary-cache
+          key: vcpkg-windows-x64-windows-static-md-${{ hashFiles('CMakeLists.txt') }}
+          restore-keys: |
+            vcpkg-windows-x64-windows-static-md-
+
       - name: Install dependencies (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
+          $env:VCPKG_DEFAULT_BINARY_CACHE = "${{ runner.temp }}\vcpkg-binary-cache"
           $vcpkg = "${env:VCPKG_INSTALLATION_ROOT}/vcpkg.exe"
           & $vcpkg install asio libsodium sqlcipher ftxui --triplet x64-windows-static-md
 
