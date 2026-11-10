@@ -12,6 +12,8 @@
 #include <string>
 #include <thread>
 
+#include <sodium.h>
+
 #include "crypto.h"
 #include "db.h"
 #include "dht.h"
@@ -59,6 +61,10 @@ Endpoint loopback(uint16_t port) {
 
 int run_selftest() {
     namespace fs = std::filesystem;
+    if (sodium_init() < 0) {
+        std::fprintf(stderr, "libsodium init failed\n");
+        return 1;
+    }
     std::printf("== p2p selftest ==\n");
 
     // Fresh temp dirs for the two chat databases.
