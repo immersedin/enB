@@ -99,11 +99,11 @@ bool endpoint_encode(const Endpoint& ep, std::vector<uint8_t>& out) {
     }
     out.push_back(static_cast<uint8_t>(ep.family));
     out.push_back(static_cast<uint8_t>(a.is_v4() ? 4 : 16));
-    auto bytes = a.to_v4().to_bytes();
     if (a.is_v6()) {
         auto b6 = a.to_v6().to_bytes();
         out.insert(out.end(), b6.begin(), b6.end());
     } else {
+        auto bytes = a.to_v4().to_bytes();
         out.insert(out.end(), bytes.begin(), bytes.end());
     }
     out.push_back(static_cast<uint8_t>(ep.port >> 8));

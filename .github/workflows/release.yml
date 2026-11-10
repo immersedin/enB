@@ -43,6 +43,11 @@ jobs:
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build --config Release -j
 
+      - name: Self-test (macOS)
+        if: runner.os == 'macOS'
+        timeout-minutes: 10
+        run: ./build/p2p --selftest
+
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -58,6 +63,12 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
           cmake --build build --config Release
+
+      - name: Self-test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 10
+        run: ./build/Release/p2p.exe --selftest
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
