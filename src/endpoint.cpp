@@ -199,8 +199,11 @@ std::vector<Endpoint> local_endpoints(uint16_t port) {
     // Windows: enumerate via getaddrinfo on the hostname.
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) == 0) {
+        asio::io_context ioc;
+        asio::ip::tcp::resolver resolver(ioc);
         asio::error_code ec;
-        auto results = asio::ip::tcp::resolver{}.resolve(hostname, "");
+        auto results = resolver.resolve(hostname, "", ec);
+        if (ec) return out;
         for (auto& r : results) {
             Endpoint ep;
             const asio::ip::address addr = r.endpoint().address();
