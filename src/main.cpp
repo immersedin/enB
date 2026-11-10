@@ -314,6 +314,93 @@ Friend ensure_peer_friend(ChatApp& app, const std::string& pid_hex,
 // ------------------------------------------------------------------
 // Slash commands
 // ------------------------------------------------------------------
+struct CmdSpec {
+    const char* name;
+    const char* usage;  // empty = takes no arguments
+};
+
+const CmdSpec kCommands[] = {
+    {"/help", ""},      {"/friends", ""},  {"/peerid", ""},
+    {"/dht", ""},       {"/close", ""},    {"/update", ""},
+    {"/version", ""},   {"/quit", ""},     {"/exit", ""},
+    {"/add", "<name> <host> <port>"},
+    {"/remove", "<name>"},
+    {"/chat", "<name>"},
+    {"/open", "<name>"},
+    {"/connect", "<invite-code | peer-id | name>"},
+    {"/invite", "[ttl] [save <file>]"},
+    {"/bootstrap", "<host:port>"},
+};
+
+const CmdSpec* find_cmd(const std::string& name) {
+    for (auto& c : kCommands)
+        if (name == c.name) return &c;
+    return nullptr;
+}
+
+bool takes_friend_name(const std::string& cmd) {
+    return cmd == "/chat" || cmd == "/open" || cmd == "/remove" ||
+           cmd == "/connect";
+}
+
+// Live hint shown in the status line while the user types a command.
+// Returns "" when there is nothing useful to suggest.
+std::string command_hint(const ChatApp& app, const std::string& text) {
+    if (text.size() < 2 || text[0] != '/') return "";
+    auto sp = text.find_first_of(" \t");
+    std::string cmd =
+        to_lower(sp == std::string::npos ? text : text.substr(0, sp));
+
+    if (sp == std::string::npos) {
+        // Still typing the command name — list prefix matches.
+        std::string out;
+        for (auto& c : kCommands) {
+            std::string name = c.name;
+            if (cmd.size() >= name.size() ||
+                name.compare(0, cmd.size(), cmd) != 0)
+                continue;
+            if (!out.empty()) out += ", ";
+            out += name;
+            if (c.usage[0]) out += " " + std::string(c.usage);
+            if (out.size() > 90) {
+                out += "...";
+                break;
+            }
+        }
+        return out.empty() ? "" : "commands: " + out;
+    }
+
+    const CmdSpec* spec = find_cmd(cmd);
+    if (!spec) return "";
+
+    // Complete the last argument against friend names.
+    if (takes_friend_name(cmd)) {
+        std::string rest = text.substr(sp + 1);
+        auto lp = rest.find_last_of(" \t");
+        std::string want = to_lower(lp == std::string::npos
+                                        ? rest
+                                        : rest.substr(lp + 1));
+        std::string out;
+        for (auto& fv : app.friends) {
+            std::string have = to_lower(fv.display_name);
+            if (have.rfind(want, 0) != 0) continue;
+            if (!out.empty()) out += ", ";
+            out += fv.display_name;
+        }
+        if (!out.empty()) return "friends: " + out;
+    }
+
+    // Show usage while required arguments are missing.
+    int need = 0;
+    if (cmd == "/add") need = 3;
+    else if (cmd == "/bootstrap") need = 1;
+    else if (takes_friend_name(cmd)) need = 1;
+    int have = static_cast<int>(split_args(text).size()) - 1;
+    if (spec->usage[0] && have < need)
+        return std::string(spec->name) + " " + spec->usage;
+    return "";
+}
+
 void execute_command(ChatApp& app, const std::string& line,
                      const std::function<void()>& wake,
                      const std::function<void()>& quit) {
@@ -766,9 +853,11 @@ int main(int argc, char** argv) {
 
     // ---- components -------------------------------------------------
     std::string input_text;
-    auto handle_input = [&app, &screen, &input_text]() {
+    std::string input_hint;
+    auto handle_input = [&app, &screen, &input_text, &input_hint]() {
         std::string text = input_text;
         input_text.clear();
+        input_hint.clear();
         if (text.empty()) return;
 
         if (!text.empty() && text[0] == '/') {
@@ -800,6 +889,10 @@ int main(int argc, char** argv) {
     input_opt.placeholder = "command or message (/help)";
     input_opt.multiline = false;  // Enter submits instead of newline
     input_opt.on_enter = handle_input;
+    input_opt.on_change = [&app, &screen, &input_text, &input_hint]() {
+        input_hint = command_hint(app, input_text);
+        screen.PostEvent(Event::Custom);
+    };
     auto input = Input(input_opt);
 
     auto friends_view = Renderer([&app] { return render_friends(app); });
@@ -833,8 +926,9 @@ int main(int argc, char** argv) {
         });
     });
 
-    auto status_line = Renderer([&app] {
-        std::string s = app.notice;
+    auto status_line = Renderer([&app, &input_hint] {
+        std::string s = input_hint;
+        if (s.empty()) s = app.notice;
         if (s.empty()) {
             s = app.mode == ChatApp::Mode::Chat
                     ? "Enter: send | /close: back"
