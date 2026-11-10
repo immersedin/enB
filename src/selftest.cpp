@@ -65,6 +65,9 @@ int run_selftest() {
         std::fprintf(stderr, "libsodium init failed\n");
         return 1;
     }
+    // Unbuffered: CI captures stdout through a pipe, and a crash would
+    // otherwise swallow everything printed so far.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::printf("== p2p selftest ==\n");
 
     // Fresh temp dirs for the two chat databases.
