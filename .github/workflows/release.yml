@@ -51,8 +51,8 @@ jobs:
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          ./scripts/package_macos.sh build/p2p "dist/p2p-${{ matrix.name }}"
-          cd dist && zip -qr "p2p-${{ matrix.name }}.zip" "p2p-${{ matrix.name }}"
+          ./scripts/package_macos.sh build/p2p "dist/p2p-${{ matrix.name }}" "${GITHUB_REF_NAME#v}"
+          cd dist && ditto -c -k --keepParent "p2p-${{ matrix.name }}/p2p.app" "p2p-${{ matrix.name }}.zip"
 
       - name: Configure and build (Windows)
         if: runner.os == 'Windows'
