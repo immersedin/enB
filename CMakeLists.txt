@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(p2p CXX)
+project(p2p VERSION 0.1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -52,11 +52,32 @@ find_package(ftxui CONFIG REQUIRED)
 find_package(OpenSSL QUIET)
 find_package(Threads REQUIRED)
 
+# Release asset picked by the auto-updater for this platform. Must match
+# the artifact names produced by .github/workflows/release.yml.
+if(WIN32)
+    set(P2P_UPDATE_ASSET "p2p-windows-x64.zip")
+elseif(APPLE)
+    if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
+        set(P2P_UPDATE_ASSET "p2p-macos-arm64.zip")
+    else()
+        set(P2P_UPDATE_ASSET "p2p-macos-x86_64.zip")
+    endif()
+else()
+    set(P2P_UPDATE_ASSET "")
+endif()
+
 add_executable(p2p
     src/main.cpp
     src/crypto.cpp
     src/db.cpp
     src/net.cpp
+    src/update.cpp
+)
+
+target_compile_definitions(p2p PRIVATE
+    APP_VERSION="${PROJECT_VERSION}"
+    P2P_UPDATE_REPO="immersedin/enB"
+    P2P_UPDATE_ASSET="${P2P_UPDATE_ASSET}"
 )
 
 target_include_directories(p2p PRIVATE

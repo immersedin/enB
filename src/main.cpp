@@ -14,16 +14,19 @@
 // Plain text is sent to the currently open chat.
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iostream>
 #include <cctype>
 #include <memory>
 #include <sstream>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include <sodium.h>
@@ -37,6 +40,11 @@
 #include "crypto.h"
 #include "db.h"
 #include "net.h"
+#include "update.h"
+
+#ifndef APP_VERSION
+#define APP_VERSION "dev"
+#endif
 
 using namespace ftxui;
 namespace fs = std::filesystem;
@@ -132,6 +140,13 @@ struct ChatApp {
         std::string name;
     };
     std::vector<Status> statuses;
+    std::vector<std::string> notices;  // one-shot messages from worker threads
+
+    // Auto-update state. latest_release/update_available are guarded by
+    // update_mu; update_running is atomic.
+    std::mutex update_mu;
+    updater::ReleaseInfo latest_release;
+    std::atomic<bool> update_running{false};
 
     ChatApp(const std::string& dir, const Config& cfg)
         : data_dir(dir), config(cfg), db(dir) {}
@@ -172,14 +187,28 @@ void say(ChatApp& app, const std::string& line) {
     if (app.console.size() > 200) app.console.erase(app.console.begin());
 }
 
+// Post a message from a worker thread; `wake` must trigger a UI redraw
+// (e.g. screen.PostEvent(Event::Custom)).
+void post_notice(ChatApp& app, const std::string& msg,
+                 const std::function<void()>& wake) {
+    {
+        std::lock_guard lk(app.inbox_mu);
+        app.notices.push_back(msg);
+    }
+    if (wake) wake();
+}
+
 void drain_inbox(ChatApp& app) {
     std::vector<std::pair<std::string, std::string>> items;
     std::vector<ChatApp::Status> sts;
+    std::vector<std::string> notes;
     {
         std::lock_guard lk(app.inbox_mu);
         items.swap(app.inbox);
         sts.swap(app.statuses);
+        notes.swap(app.notices);
     }
+    for (auto& n : notes) say(app, n);
     for (auto& [key, text] : items) {
         FriendView* fv = app.find_by_peer_key(key);
         if (!fv) continue;
@@ -229,7 +258,9 @@ void open_chat(ChatApp& app, FriendView& fv) {
 // ------------------------------------------------------------------
 // Slash commands
 // ------------------------------------------------------------------
-void execute_command(ChatApp& app, const std::string& line) {
+void execute_command(ChatApp& app, const std::string& line,
+                     const std::function<void()>& wake,
+                     const std::function<void()>& quit) {
     auto args = split_args(line);
     if (args.empty()) return;
     std::string cmd = to_lower(args[0]);
@@ -241,6 +272,8 @@ void execute_command(ChatApp& app, const std::string& line) {
         say(app, "  /remove <name>        remove friend");
         say(app, "  /chat <name>          open chat (auto-connects)");
         say(app, "  /close                back to console");
+        say(app, "  /update               check GitHub for updates & install");
+        say(app, "  /version              show version info");
         say(app, "  /quit                 exit");
         say(app, "any other text is sent to the open chat");
     } else if (cmd == "/friends") {
@@ -322,6 +355,48 @@ void execute_command(ChatApp& app, const std::string& line) {
     } else if (cmd == "/close") {
         app.open_friend_id = -1;
         app.mode = ChatApp::Mode::Home;
+    } else if (cmd == "/version") {
+        say(app, "version " + std::string(updater::current_version()));
+        std::lock_guard lk(app.update_mu);
+        if (!app.latest_release.tag.empty())
+            say(app, "latest release: " + app.latest_release.tag);
+    } else if (cmd == "/update") {
+        if (app.update_running.exchange(true)) {
+            say(app, "update already in progress");
+            return;
+        }
+        updater::ReleaseInfo rel;
+        {
+            std::lock_guard lk(app.update_mu);
+            rel = app.latest_release;
+        }
+        std::thread([&app, wake, quit, rel]() mutable {
+            auto fail = [&](const std::string& m) {
+                app.update_running = false;
+                post_notice(app, m, wake);
+            };
+            updater::ReleaseInfo r = rel;
+            std::string err;
+            if (r.download_url.empty() &&
+                !updater::fetch_latest(r, &err)) {
+                fail("update check failed: " + err);
+                return;
+            }
+            if (updater::compare_versions(r.tag,
+                                          updater::current_version()) <= 0) {
+                fail("already up to date (v" +
+                     std::string(updater::current_version()) + ")");
+                return;
+            }
+            post_notice(app, "downloading " + r.tag + "...", wake);
+            if (updater::apply_update(r, err)) {
+                // New instance spawned; leave the UI loop.
+                quit();
+                return;
+            }
+            fail("update failed: " + err);
+        }).detach();
+        say(app, "checking for updates...");
     } else if (cmd == "/quit" || cmd == "/exit") {
         app.net->stop();
         std::exit(0);
@@ -433,6 +508,24 @@ int main() {
         });
     app.net->start();
 
+    // Background check for a newer GitHub release.
+    std::thread([&app, &screen]() {
+        updater::ReleaseInfo rel;
+        std::string err;
+        if (!updater::fetch_latest(rel, &err)) return;
+        if (updater::compare_versions(rel.tag,
+                                      updater::current_version()) <= 0)
+            return;
+        {
+            std::lock_guard lk(app.update_mu);
+            app.latest_release = rel;
+        }
+        post_notice(
+            app, "update available: " + rel.tag +
+                     " — /update to install",
+            [&screen] { screen.PostEvent(Event::Custom); });
+    }).detach();
+
     // ---- components -------------------------------------------------
     std::string input_text;
     auto handle_input = [&app, &screen, &input_text]() {
@@ -441,7 +534,10 @@ int main() {
         if (text.empty()) return;
 
         if (!text.empty() && text[0] == '/') {
-            execute_command(app, text);
+            execute_command(
+                app, text,
+                [&screen] { screen.PostEvent(Event::Custom); },
+                [&screen] { screen.Post([&screen] { screen.Exit(); }); });
         } else if (app.mode == ChatApp::Mode::Chat) {
             if (auto* fv = app.find_by_id(app.open_friend_id)) {
                 bool sent = false;
@@ -490,7 +586,8 @@ int main() {
     auto header = Renderer([&app] {
         std::string fp = crypto::to_hex(app.identity.x25519.pub.data(), 8);
         return hbox({
-            text(" P2P Secure Chat ") | bold | color(Color::Cyan),
+            text(" P2P Secure Chat v" APP_VERSION " ") | bold |
+                color(Color::Cyan),
             text("  me: " + app.config.name + "  fp:" + fp +
                  "  listen:" + std::to_string(app.config.port) +
                  "  [NoiseXX+DR+SQLCipher]") |
