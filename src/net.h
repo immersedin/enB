@@ -16,6 +16,9 @@
 
 using asio::ip::tcp;
 
+class Dht;         // dht.h — optional Kademlia backend for peer resolution
+struct PeerRecord; // dht.h — signed peer record returned by DHT lookups
+
 // Local long-term identity: X25519 static key (Noise DH + ratchet base)
 // and Ed25519 signing key. Stored as raw 32-byte hex files, mode 0600.
 struct Identity {
@@ -64,11 +67,15 @@ public:
     // decrypted incoming application message.
     // on_status(friend_id, peer_key, online, name): session up/down
     // notifications. friend_id is -1 when the peer is unknown.
+    // dht: optional Kademlia node used to resolve friends that have a
+    // peer id (x25519_pub) but no host/port. May be nullptr.
+    // on_notice(msg): security/diagnostic messages for the UI console.
     Net(Identity& identity, int listen_port, Database& db,
         std::function<void(const std::string&, const std::string&)> on_message,
         std::function<void(int64_t, const std::string&, bool,
-                           const std::string&)>
-            on_status);
+                           const std::string&)> on_status,
+        Dht* dht = nullptr,
+        std::function<void(const std::string&)> on_notice = nullptr);
     ~Net();
 
     Net(const Net&) = delete;
@@ -77,8 +84,21 @@ public:
     void start();
     void stop();
 
-    // Asynchronous outgoing connection to a friend (host:port).
+    // Asynchronous outgoing connection to a friend. If the friend has a
+    // peer id but no host/port, the address is resolved through the DHT
+    // (with the stored endpoint as fallback).
     void connect_to(const Friend& friend_);
+
+    // Synchronous single-endpoint dial + Noise handshake + session
+    // registration. Returns true when a session is (or became) active.
+    // Security checks (peer id match, identity key change) are enforced
+    // here and reported through on_notice_.
+    bool dial_friend(const Friend& friend_);
+    // DHT resolution path for connect_to().
+    void resolve_and_connect(const Friend& friend_);
+    void resolve_with_record(const std::shared_ptr<Friend>& work,
+                             const crypto::Key32& peer_id,
+                             const std::optional<PeerRecord>& rec);
 
     // Encrypt + send a text message to an established session.
     bool send(const std::string& peer_key, const std::string& text);
@@ -90,7 +110,6 @@ public:
 private:
     void accept_loop();
     void handle_incoming(tcp::socket sock);
-    void handle_outgoing(const Friend& friend_);
     void receive_loop(std::shared_ptr<Session> session);
     void register_session(std::shared_ptr<Session> session);
     void unregister_session(const std::string& peer_key);
@@ -109,6 +128,8 @@ private:
     std::function<void(int64_t, const std::string&, bool,
                        const std::string&)>
         on_status_;
+    Dht* dht_ = nullptr;
+    std::function<void(const std::string&)> on_notice_;
 
     // Single io_context shared by all sockets. All socket operations are
     // synchronous, so io_context::run() is never called.

@@ -41,6 +41,10 @@ public:
     // Fill in the identity keys after the first successful handshake.
     bool set_identity_keys(int64_t id, const std::string& x25519_pub,
                            const std::string& ed25519_pub);
+    // Remember a working network endpoint for reconnects (host may be
+    // empty when the friend is resolved via the DHT).
+    bool update_friend_endpoint(int64_t id, const std::string& host,
+                                int port);
 
     void add_message(int64_t friend_id, bool outgoing, const std::string& body);
     std::vector<StoredMessage> messages_for(int64_t friend_id, int limit = 500);

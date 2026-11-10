@@ -39,7 +39,11 @@
 
 #include "crypto.h"
 #include "db.h"
+#include "dht.h"
+#include "endpoint.h"
+#include "invite.h"
 #include "net.h"
+#include "selftest.h"
 #include "update.h"
 
 #ifndef APP_VERSION
@@ -67,7 +71,9 @@ struct FriendView {
 
 struct Config {
     int port = 5555;
+    int dht_port = 0;  // 0 = same number as port (UDP)
     std::string name = "me";
+    std::vector<std::string> bootstraps;  // raw "host:port" DHT endpoints
 };
 
 Config load_config(const std::string& path) {
@@ -90,8 +96,15 @@ Config load_config(const std::string& path) {
                 c.port = std::stoi(v);
             } catch (...) {
             }
+        } else if (k == "dht_port") {
+            try {
+                c.dht_port = std::stoi(v);
+            } catch (...) {
+            }
         } else if (k == "name") {
             c.name = v;
+        } else if (k == "bootstrap") {
+            if (!v.empty()) c.bootstraps.push_back(v);
         }
     }
     return c;
@@ -110,6 +123,27 @@ std::string to_lower(std::string s) {
     return s;
 }
 
+std::string peer_id_hex(const Identity& id) {
+    return crypto::to_hex(id.x25519.pub.data(), 32);
+}
+
+std::string short_id(const std::string& hex_id) {
+    return hex_id.substr(0, 16);
+}
+
+bool is_peer_id(const std::string& s) {
+    if (s.size() != 64) return false;
+    for (char c : s)
+        if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
+    return true;
+}
+
+int64_t unix_now() {
+    return std::chrono::duration_cast<std::chrono::seconds>(
+               std::chrono::system_clock::now().time_since_epoch())
+        .count();
+}
+
 }  // namespace
 
 // ------------------------------------------------------------------
@@ -121,6 +155,7 @@ struct ChatApp {
     Identity identity;
     Database db;
     std::unique_ptr<Net> net;
+    std::unique_ptr<Dht> dht;
 
     std::vector<FriendView> friends;
     int64_t open_friend_id = -1;
@@ -256,6 +291,27 @@ void open_chat(ChatApp& app, FriendView& fv) {
 }
 
 // ------------------------------------------------------------------
+// Peer-id / invitation helpers
+// ------------------------------------------------------------------
+// Find a friend by peer id (x25519 pub hex), creating a placeholder
+// record when unknown. Peer-id friends have no host/port — their
+// address is resolved through the DHT at connect time.
+Friend ensure_peer_friend(ChatApp& app, const std::string& pid_hex,
+                          const std::string& name_hint) {
+    if (auto f = app.db.find_friend_by_key(pid_hex)) return *f;
+    Friend f;
+    f.name = name_hint.empty() ? "peer-" + short_id(pid_hex) : name_hint;
+    f.host = "";
+    f.port = 0;
+    f.x25519_pub = pid_hex;
+    f.created_at = unix_now();
+    f.id = app.db.add_friend(f);
+    reload_friends(app);
+    if (auto* fv = app.find_by_peer_key(pid_hex)) return fv->f;
+    return f;
+}
+
+// ------------------------------------------------------------------
 // Slash commands
 // ------------------------------------------------------------------
 void execute_command(ChatApp& app, const std::string& line,
@@ -271,6 +327,12 @@ void execute_command(ChatApp& app, const std::string& line,
         say(app, "  /add <name> <host> <port>   add friend & connect");
         say(app, "  /remove <name>        remove friend");
         say(app, "  /chat <name>          open chat (auto-connects)");
+        say(app, "  /connect <arg>        connect by invite code, peer id");
+        say(app, "                       or friend name");
+        say(app, "  /invite [ttl] [save <file>]  create invitation");
+        say(app, "  /peerid               show this peer's id");
+        say(app, "  /dht                  DHT status");
+        say(app, "  /bootstrap <host:port>  add DHT bootstrap node");
         say(app, "  /close                back to console");
         say(app, "  /update               check GitHub for updates & install");
         say(app, "  /version              show version info");
@@ -281,9 +343,12 @@ void execute_command(ChatApp& app, const std::string& line,
             say(app, "no friends — use /add <name> <host> <port>");
         }
         for (auto& fv : app.friends) {
-            say(app, std::string("  ") + (fv.online ? "(*)" : "( )") + " " +
-                       fv.display_name + "  " + fv.f.host + ":" +
-                       std::to_string(fv.f.port) +
+            std::string where = fv.f.host.empty()
+                                    ? "dht:" + short_id(fv.f.x25519_pub)
+                                    : fv.f.host + ":" +
+                                          std::to_string(fv.f.port);
+            say(app, std::string("  ") + (fv.online ? "(*)" : "( )") +
+                       " " + fv.display_name + "  " + where +
                        (fv.f.id == app.open_friend_id ? "   <open>" : ""));
         }
     } else if (cmd == "/add") {
@@ -397,8 +462,150 @@ void execute_command(ChatApp& app, const std::string& line,
             fail("update failed: " + err);
         }).detach();
         say(app, "checking for updates...");
+    } else if (cmd == "/peerid") {
+        say(app, "peer id: " + peer_id_hex(app.identity));
+        say(app, "short:   " + short_id(peer_id_hex(app.identity)));
+        if (app.dht) {
+            Endpoint ue{Endpoint::Family::IPv6, "::",
+                        static_cast<uint16_t>(app.config.dht_port)};
+            say(app, "dht:     " + ue.str() + " (UDP)");
+            if (auto obs = app.dht->observed_public_endpoint())
+                say(app, "observed:" + obs->str() + " (public view)");
+        }
+    } else if (cmd == "/dht") {
+        if (!app.dht) {
+            say(app, "DHT is disabled");
+        } else {
+            say(app, "dht nodes known: " +
+                       std::to_string(app.dht->known_nodes()));
+            say(app, "records stored:  " +
+                       std::to_string(app.dht->stored_records()));
+            if (auto obs = app.dht->observed_public_endpoint())
+                say(app, "observed public endpoint: " + obs->str());
+            else
+                say(app, "no public endpoint observed yet "
+                         "(behind NAT or no DHT contact)");
+        }
+    } else if (cmd == "/bootstrap") {
+        if (args.size() != 2) {
+            say(app, "usage: /bootstrap <host:port>   (DHT UDP endpoint)");
+            return;
+        }
+        Endpoint ep;
+        if (!parse_endpoint(args[1], ep)) {
+            say(app, "bad endpoint — use host:port or [v6]:port");
+            return;
+        }
+        if (app.dht) app.dht->add_bootstrap(ep);
+        std::ofstream cfg(app.data_dir + "/config.ini",
+                          std::ios::app);
+        cfg << "bootstrap=" << ep.str() << "\n";
+        say(app, "bootstrap node added: " + ep.str());
+    } else if (cmd == "/invite") {
+        int64_t ttl = 300;
+        bool save_file = false;
+        std::string file;
+        for (size_t i = 1; i < args.size(); ++i) {
+            if (args[i] == "save" && i + 1 < args.size()) {
+                save_file = true;
+                file = args[++i];
+            } else {
+                try {
+                    ttl = std::stoll(args[i]);
+                } catch (...) {
+                }
+            }
+        }
+        if (ttl < 30) ttl = 30;
+        if (ttl > 86400) ttl = 86400;
+
+        Invitation inv;
+        inv.peer_id = app.identity.x25519.pub;
+        inv.ed_pub = app.identity.ed25519.pub;
+        inv.name = app.config.name;
+        inv.issued_at = unix_now();
+        inv.ttl = ttl;
+        // Bootstrap hints: our DHT endpoint as seen locally and, when
+        // known, our public IP (NAT-friendly).
+        if (app.dht) {
+            for (auto& ep : local_endpoints(
+                     static_cast<uint16_t>(app.config.dht_port)))
+                inv.dht_hints.push_back(ep);
+            if (auto obs = app.dht->observed_public_endpoint()) {
+                Endpoint pub{obs->family, obs->addr,
+                             static_cast<uint16_t>(app.config.dht_port)};
+                if (endpoint_is_public(pub) &&
+                    std::find(inv.dht_hints.begin(), inv.dht_hints.end(),
+                              pub) == inv.dht_hints.end())
+                    inv.dht_hints.push_back(pub);
+            }
+            if (inv.dht_hints.empty()) {
+                Endpoint any{Endpoint::Family::IPv6, "::",
+                             static_cast<uint16_t>(app.config.dht_port)};
+                inv.dht_hints.push_back(any);
+            }
+        }
+        crypto::Bytes blob = invitation_encode(inv, app.identity);
+        std::string code = base64url_encode(blob);
+        say(app, "Invitation created.");
+        say(app, "Peer ID: " + peer_id_hex(app.identity));
+        say(app, "Name:    " + inv.name);
+        say(app, "Expires: in " + std::to_string(ttl) + " s");
+        if (save_file) {
+            std::ofstream f(file, std::ios::trunc);
+            f << code << "\n";
+            say(app, "saved to " + file);
+        } else {
+            say(app, "Invitation code:");
+            for (size_t i = 0; i < code.size(); i += 96)
+                say(app, "  " + code.substr(i, 96));
+            say(app, "(use /invite save <file> to export, "
+                     "/connect <code> to redeem)");
+        }
+    } else if (cmd == "/connect") {
+        if (args.size() != 2) {
+            say(app, "usage: /connect <invite-code | peer-id | name>");
+            return;
+        }
+        std::string arg = args[1];
+        crypto::Bytes blob;
+        bool handled = false;
+        if (base64url_decode(arg, blob)) {
+            Invitation inv;
+            if (invitation_decode(blob, inv, unix_now())) {
+                handled = true;
+                if (app.dht)
+                    for (auto& ep : inv.dht_hints) app.dht->add_bootstrap(ep);
+                std::string pid_hex = crypto::to_hex(inv.peer_id.data(),
+                                                     32);
+                Friend f = ensure_peer_friend(app, pid_hex, inv.name);
+                say(app, "accepted invitation from " +
+                           (inv.name.empty() ? pid_hex.substr(0, 16)
+                                             : inv.name) +
+                           " — resolving via DHT...");
+                if (app.net) app.net->connect_to(f);
+            }
+        }
+        if (!handled) {
+            std::string lower = to_lower(arg);
+            if (is_peer_id(lower)) {
+                Friend f = ensure_peer_friend(app, lower, "");
+                say(app, "connecting to peer " + short_id(lower) +
+                           " via DHT...");
+                if (app.net) app.net->connect_to(f);
+                handled = true;
+            } else if (auto* fv = app.find_by_name(arg)) {
+                say(app, "connecting to " + fv->display_name + "...");
+                if (app.net) app.net->connect_to(fv->f);
+                handled = true;
+            }
+        }
+        if (!handled)
+            say(app, "unrecognized argument — not an invitation code, "
+                     "peer id, or contact name");
     } else if (cmd == "/quit" || cmd == "/exit") {
         app.net->stop();
+        if (app.dht) app.dht->stop();
         std::exit(0);
     } else {
         say(app, "unknown command: " + args[0] + " (try /help)");
@@ -416,10 +623,14 @@ Element render_friends(const ChatApp& app) {
     }
     for (auto& fv : app.friends) {
         bool open = fv.f.id == app.open_friend_id;
+        std::string where = fv.f.host.empty()
+                                ? "dht:" + short_id(fv.f.x25519_pub)
+                                : fv.f.host + ":" +
+                                      std::to_string(fv.f.port);
         std::string label =
             (open ? ">" : " ") + std::string(" ") +
             (fv.online ? "(*)" : "( )") + " " + fv.display_name + "   " +
-            fv.f.host + ":" + std::to_string(fv.f.port);
+            where;
         rows.push_back(text(label) |
                        color(open ? Color::Cyan : Color::White));
     }
@@ -461,7 +672,10 @@ Element render_chat_lines(const FriendView& fv) {
 
 }  // namespace
 
-int main() {
+int main(int argc, char** argv) {
+    for (int i = 1; i < argc; ++i)
+        if (std::string(argv[i]) == "--selftest") return run_selftest();
+
     if (sodium_init() < 0) {
         std::cerr << "libsodium init failed\n";
         return 1;
@@ -474,6 +688,10 @@ int main() {
     std::string data_dir = std::string(home ? home : ".") + "/.p2p-chat";
     Config config = load_config(data_dir + "/config.ini");
     if (config.port <= 0 || config.port > 65535) config.port = 5555;
+    // UDP and TCP port spaces are separate: by default the DHT shares
+    // the chat port number.
+    if (config.dht_port <= 0 || config.dht_port > 65535)
+        config.dht_port = config.port;
 
     ChatApp app(data_dir, config);
     try {
@@ -485,6 +703,21 @@ int main() {
     if (!app.db.last_error().empty())
         std::cerr << "database warning: " << app.db.last_error() << "\n";
     reload_friends(app);
+
+    // ---- decentralized layer: Kademlia DHT -------------------------
+    std::vector<Endpoint> boot_eps;
+    for (auto& b : config.bootstraps) {
+        Endpoint ep;
+        if (parse_endpoint(b, ep)) boot_eps.push_back(ep);
+    }
+    app.dht = std::make_unique<Dht>(
+        app.identity, app.identity.x25519.pub,
+        Endpoint{Endpoint::Family::IPv6, "::",
+                 static_cast<uint16_t>(config.dht_port)},
+        boot_eps);
+    app.dht->start();
+    app.dht->publish_self(config.name,
+                          static_cast<uint16_t>(config.port));
 
     auto screen = App::Fullscreen();
 
@@ -505,6 +738,11 @@ int main() {
                 app.statuses.push_back({fid, peer_key, online, name});
             }
             screen.PostEvent(Event::Custom);
+        },
+        app.dht.get(),
+        [&screen, &app](const std::string& msg) {
+            post_notice(app, msg,
+                        [&screen] { screen.PostEvent(Event::Custom); });
         });
     app.net->start();
 
@@ -617,5 +855,6 @@ int main() {
 
     screen.Loop(global);
     app.net->stop();
+    if (app.dht) app.dht->stop();
     return 0;
 }
