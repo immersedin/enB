@@ -642,16 +642,19 @@ void execute_command(ChatApp& app, const std::string& line,
             say(app, "usage: /bootstrap <host:port>   (DHT UDP endpoint)");
             return;
         }
-        Endpoint ep;
-        if (!parse_endpoint(args[1], ep)) {
-            say(app, "bad endpoint — use host:port or [v6]:port");
+        auto eps = resolve_endpoint(args[1]);
+        if (eps.empty()) {
+            say(app, "bad endpoint — use host:port, name:port or "
+                     "[v6]:port");
             return;
         }
-        if (app.dht) app.dht->add_bootstrap(ep);
+        for (auto& ep : eps)
+            if (app.dht) app.dht->add_bootstrap(ep);
         std::ofstream cfg(app.data_dir + "/config.ini",
                           std::ios::app);
-        cfg << "bootstrap=" << ep.str() << "\n";
-        say(app, "bootstrap node added: " + ep.str());
+        cfg << "bootstrap=" << args[1] << "\n";
+        say(app, "bootstrap node added: " + args[1] +
+                   " (" + std::to_string(eps.size()) + " address(es))");
     } else if (cmd == "/invite") {
         int64_t ttl = 300;
         bool save_file = false;
@@ -956,8 +959,8 @@ int main(int argc, char** argv) {
     // ---- decentralized layer: Kademlia DHT -------------------------
     std::vector<Endpoint> boot_eps;
     for (auto& b : config.bootstraps) {
-        Endpoint ep;
-        if (parse_endpoint(b, ep)) boot_eps.push_back(ep);
+        auto eps = resolve_endpoint(b);
+        boot_eps.insert(boot_eps.end(), eps.begin(), eps.end());
     }
     app.dht = std::make_unique<Dht>(
         app.identity, app.identity.x25519.pub,

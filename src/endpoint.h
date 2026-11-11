@@ -26,6 +26,11 @@ struct Endpoint {
 // meaningful off-link; they are preserved for completeness.
 bool parse_endpoint(const std::string& s, Endpoint& out);
 
+// Like parse_endpoint, but when the host part is a DNS name it is
+// resolved and ALL resulting addresses are returned (a hostname may map
+// to several IPs). Returns an empty vector on failure.
+std::vector<Endpoint> resolve_endpoint(const std::string& s);
+
 // Wire encoding: family(1) | addr_len(1) | addr bytes | port u16 BE.
 // addr_len is 4 for IPv4, 16 for IPv6 (raw bytes, no scope).
 // Returns false when the address cannot be parsed to raw bytes.

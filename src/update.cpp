@@ -355,31 +355,82 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
     cleanup();
     return true;
 #else
-    // Copy every payload file next to the running binary via
-    // write-temp + rename (atomic; safe over a running executable).
-    fs::path target_dir = self.parent_path();
-    for (const auto& de : fs::directory_iterator(payload_dir, ec)) {
-        if (ec || !de.is_regular_file()) continue;
-        fs::path dst = target_dir / de.path().filename();
-        fs::path tmpf = target_dir /
-                        (de.path().filename().string() + ".p2p-new");
-        fs::copy_file(de.path(), tmpf,
-                      fs::copy_options::overwrite_existing, ec);
+    fs::path spawn_exe = self;
+
+    // Nearest enclosing .app bundle, if any.
+    auto app_ancestor = [](const fs::path& p) {
+        for (fs::path d = p.parent_path(); !d.empty() && d != d.root_path();
+             d = d.parent_path())
+            if (d.extension() == ".app") return d;
+        return fs::path();
+    };
+    fs::path self_bundle = app_ancestor(self);
+    fs::path src_bundle = app_ancestor(bin);
+
+    if (!self_bundle.empty() && !src_bundle.empty()) {
+        // The release asset is a whole .app (binary + bundled dylibs +
+        // signature, install names rewritten to @rpath). Replacing only
+        // the Mach-O inside the installed bundle would break its
+        // signature and leave the new binary unable to find its dylibs,
+        // so swap the entire bundle instead.
+        fs::path dst = self_bundle;
+        fs::path old = dst;
+        old += ".p2p-old";
+        fs::remove_all(old, ec);
+        fs::rename(dst, old, ec);
         if (ec) {
             cleanup();
-            return fail("cannot write " + dst.filename().string());
+            return fail("cannot move current app aside");
         }
-        fs::permissions(tmpf,
-                        fs::perms::owner_all | fs::perms::group_read |
-                            fs::perms::others_read | fs::perms::owner_exec |
-                            fs::perms::group_exec | fs::perms::others_exec,
-                        fs::perm_options::replace, ec);
-        fs::rename(tmpf, dst, ec);
-        if (ec) {
-            std::error_code ec2;
-            fs::remove(tmpf, ec2);
+        std::error_code ec2;
+        fs::copy(src_bundle, dst, fs::copy_options::recursive, ec2);
+        if (ec2) {
+            fs::rename(old, dst, ec);
             cleanup();
-            return fail("cannot replace " + dst.filename().string());
+            return fail("cannot install new app bundle");
+        }
+        // Re-sign ad-hoc so the copied bundle is accepted (arm64
+        // requires at least an ad-hoc signature on every Mach-O).
+        cmd_ok("codesign --force --deep --sign - " + sq(dst.string()));
+        spawn_exe = dst / bin.lexically_relative(src_bundle);
+        fs::permissions(spawn_exe,
+                        fs::perms::owner_exec | fs::perms::group_exec |
+                            fs::perms::others_exec,
+                        fs::perm_options::add, ec);
+        // The old bundle's files can be unlinked while the process
+        // keeps running from its inode; best effort.
+        fs::remove_all(old, ec);
+    } else {
+        // Copy every payload file next to the running binary via
+        // write-temp + rename (atomic; safe over a running executable).
+        fs::path target_dir = self.parent_path();
+        for (const auto& de :
+             fs::directory_iterator(payload_dir, ec)) {
+            if (ec || !de.is_regular_file()) continue;
+            fs::path dst = target_dir / de.path().filename();
+            fs::path tmpf =
+                target_dir / (de.path().filename().string() + ".p2p-new");
+            fs::copy_file(de.path(), tmpf,
+                          fs::copy_options::overwrite_existing, ec);
+            if (ec) {
+                cleanup();
+                return fail("cannot write " +
+                            dst.filename().string());
+            }
+            fs::permissions(
+                tmpf,
+                fs::perms::owner_all | fs::perms::group_read |
+                    fs::perms::others_read | fs::perms::owner_exec |
+                    fs::perms::group_exec | fs::perms::others_exec,
+                fs::perm_options::replace, ec);
+            fs::rename(tmpf, dst, ec);
+            if (ec) {
+                std::error_code ec2;
+                fs::remove(tmpf, ec2);
+                cleanup();
+                return fail("cannot replace " +
+                            dst.filename().string());
+            }
         }
     }
 
@@ -388,7 +439,7 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
     if (pid == 0) {
         usleep(400000);
         setsid();
-        execl(self.c_str(), "p2p", static_cast<char*>(nullptr));
+        execl(spawn_exe.c_str(), "p2p", static_cast<char*>(nullptr));
         _exit(127);
     }
     cleanup();
