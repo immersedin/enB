@@ -87,6 +87,41 @@ bool parse_endpoint(const std::string& s, Endpoint& out) {
     return parse_addr_port(host, port, out);
 }
 
+std::vector<Endpoint> resolve_endpoint(const std::string& s) {
+    Endpoint ep;
+    if (parse_endpoint(s, ep)) return {ep};
+
+    // DNS fallback: split host:port ourselves (bracketed IPv6 already
+    // handled above; a hostname never contains ':').
+    std::string t = trim(s);
+    if (t.empty() || t.front() == '[') return {};
+    auto pos = t.rfind(':');
+    if (pos == std::string::npos) return {};
+    std::string host = t.substr(0, pos);
+    std::string port_s = t.substr(pos + 1);
+    if (host.empty() || host.find(':') != std::string::npos) return {};
+    char* end = nullptr;
+    long p = std::strtol(port_s.c_str(), &end, 10);
+    if (!end || *end != '\0' || p <= 0 || p > 65535) return {};
+
+    asio::io_context ioc;
+    asio::ip::udp::resolver resolver(ioc);
+    asio::error_code ec;
+    auto results = resolver.resolve(host, std::to_string(p), ec);
+    if (ec) return {};
+    std::vector<Endpoint> out;
+    for (auto& r : results) {
+        const auto& addr = r.endpoint().address();
+        Endpoint e;
+        e.family = addr.is_v4() ? Endpoint::Family::IPv4
+                                : Endpoint::Family::IPv6;
+        e.addr = addr.to_string();
+        e.port = static_cast<uint16_t>(p);
+        out.push_back(e);
+    }
+    return out;
+}
+
 bool endpoint_encode(const Endpoint& ep, std::vector<uint8_t>& out) {
     asio::ip::address a;
     asio::error_code ec;
