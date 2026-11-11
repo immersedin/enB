@@ -925,8 +925,18 @@ Element render_chat_lines(const FriendView& fv) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    for (int i = 1; i < argc; ++i)
-        if (std::string(argv[i]) == "--selftest") return run_selftest();
+    std::string data_dir_override;
+    for (int i = 1; i < argc; ++i) {
+        std::string a = argv[i];
+        if (a == "--selftest") return run_selftest();
+        if (a == "--data-dir" && i + 1 < argc) {
+            data_dir_override = argv[++i];
+        } else if (a.rfind("--data-dir=", 0) == 0) {
+            data_dir_override = a.substr(11);
+        }
+    }
+    if (const char* env = std::getenv("P2P_DATA_DIR"))
+        if (data_dir_override.empty()) data_dir_override = env;
 
     if (sodium_init() < 0) {
         std::cerr << "libsodium init failed\n";
@@ -937,7 +947,10 @@ int main(int argc, char** argv) {
 #ifdef _WIN32
     if (!home) home = std::getenv("USERPROFILE");
 #endif
-    std::string data_dir = std::string(home ? home : ".") + "/.p2p-chat";
+    std::string data_dir =
+        !data_dir_override.empty()
+            ? data_dir_override
+            : std::string(home ? home : ".") + "/.p2p-chat";
     Config config = load_config(data_dir + "/config.ini");
     if (config.port <= 0 || config.port > 65535) config.port = 5555;
     // UDP and TCP port spaces are separate: by default the DHT shares

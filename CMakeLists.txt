@@ -1,5 +1,8 @@
 cmake_minimum_required(VERSION 3.24)
-project(p2p VERSION 0.4.0 LANGUAGES CXX)
+# Fallback version for builds without git metadata (e.g. source tarballs);
+# when a git checkout is available the version is taken from `git describe`
+# below, so release tags drive APP_VERSION automatically.
+project(p2p VERSION 0.4.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -78,8 +81,26 @@ add_executable(p2p
     src/update.cpp
 )
 
+# Derive the app version from the nearest git tag ("v0.4.0",
+# "v0.4.0-3-gdeadbee", ...). Falls back to PROJECT_VERSION for tarball
+# builds or checkouts without tags.
+set(P2P_APP_VERSION "${PROJECT_VERSION}")
+execute_process(
+    COMMAND git describe --tags --always --dirty
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    OUTPUT_VARIABLE GIT_DESCRIBE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+)
+if(GIT_DESCRIBE MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
+    set(P2P_APP_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+elseif(GIT_DESCRIBE MATCHES "^v?([0-9]+)\\.([0-9]+)")
+    set(P2P_APP_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.0")
+endif()
+message(STATUS "p2p version: ${P2P_APP_VERSION} (git: '${GIT_DESCRIBE}')")
+
 target_compile_definitions(p2p PRIVATE
-    APP_VERSION="${PROJECT_VERSION}"
+    APP_VERSION="${P2P_APP_VERSION}"
     P2P_UPDATE_REPO="immersedin/enB"
     P2P_UPDATE_ASSET="${P2P_UPDATE_ASSET}"
 )

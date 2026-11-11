@@ -400,6 +400,7 @@ struct Dht::Impl {
     const Identity& id;
     crypto::Key32 node_id;
     Endpoint udp_ep;
+    Endpoint local_ep;  // first non-loopback local addr, for advertising
     std::vector<Endpoint> bootstrap;
 
     asio::io_context io;
@@ -489,6 +490,23 @@ struct Dht::Impl {
                   });
         if (all.size() > k) all.resize(k);
         return all;
+    }
+
+    // Best endpoint to put on the wire as "our" address. The bind
+    // endpoint is often the wildcard "::", which peers cannot dial —
+    // prefer the observed public endpoint, then a local interface
+    // address. An explicitly bound address is advertised as-is.
+    Endpoint adv() {
+        if (!(udp_ep.addr == "::" || udp_ep.addr == "0.0.0.0" ||
+              udp_ep.addr.empty()))
+            return udp_ep;
+        {
+            std::lock_guard lk(mu);
+            if (observed_public && observed_public->valid())
+                return *observed_public;
+        }
+        if (local_ep.valid()) return local_ep;
+        return udp_ep;
     }
 
     // ---- transport ----------------------------------------------------
@@ -599,8 +617,8 @@ struct Dht::Impl {
                     boots = bootstrap;
                 }
                 crypto::Bytes pkt = want_value
-                    ? pkt_find_value(q->qid, target, node_id, udp_ep)
-                    : pkt_find_node(q->qid, target, node_id, udp_ep);
+                    ? pkt_find_value(q->qid, target, node_id, adv())
+                    : pkt_find_node(q->qid, target, node_id, adv());
                 int sent = 0;
                 for (auto& b : boots) {
                     if (sent >= kAlpha) break;
@@ -637,8 +655,8 @@ struct Dht::Impl {
                 crypto::Bytes pkt;
                 for (auto& n : cand) {
                     pkt = want_value
-                        ? pkt_find_value(q->qid, target, node_id, udp_ep)
-                        : pkt_find_node(q->qid, target, node_id, udp_ep);
+                        ? pkt_find_value(q->qid, target, node_id, adv())
+                        : pkt_find_node(q->qid, target, node_id, adv());
                     send_to(n.ep, pkt);
                 }
             }
@@ -687,9 +705,12 @@ struct Dht::Impl {
             crypto::Key32 sid{};
             Endpoint sep;
             if (!parse_sender(p, left, sid, sep)) return;
-            route_add(sid, sep);
+            // Route by the datagram's source address, not the claimed
+            // sender_ep — the latter is often a wildcard or a private
+            // address that peers cannot dial back.
+            route_add(sid, from);
             crypto::Bytes r;
-            append_reply_hdr(r, kPong, 0, node_id, udp_ep, from, false);
+            append_reply_hdr(r, kPong, 0, node_id, adv(), from, false);
             send_to(from, r);
             return;
         }
@@ -704,7 +725,7 @@ struct Dht::Impl {
             crypto::Key32 sid{};
             Endpoint sep;
             if (!parse_sender(p, left, sid, sep)) return;
-            route_add(sid, sep);
+            route_add(sid, from);
 
             crypto::Bytes value;
             bool found = false;
@@ -712,17 +733,20 @@ struct Dht::Impl {
 
             crypto::Bytes r;
             append_reply_hdr(r, found ? kValue : kNodes, qid, node_id,
-                             udp_ep, from, true);
+                             adv(), from, true);
             if (found) {
                 r.push_back(1);
                 put16(r, static_cast<uint16_t>(value.size()));
                 r.insert(r.end(), value.begin(), value.end());
             } else {
                 // k closest nodes to target, self first.
+                // adv() locks mu internally — compute it before taking
+                // the lock (std::mutex is not recursive).
+                Endpoint my_ep = adv();
                 std::vector<RouteNode> nodes;
                 {
                     std::lock_guard lk(mu);
-                    nodes.push_back({node_id, udp_ep,
+                    nodes.push_back({node_id, my_ep,
                                      std::chrono::steady_clock::now()});
                     for (auto& bucket : buckets)
                         for (auto& n : bucket) nodes.push_back(n);
@@ -754,10 +778,10 @@ struct Dht::Impl {
             crypto::Bytes value(p, p + vlen);
             p += vlen; left -= vlen;
             if (!parse_sender(p, left, sid, sep)) return;
-            route_add(sid, sep);
+            route_add(sid, from);
             record_put(key, value, ttl);
             crypto::Bytes r;
-            append_reply_hdr(r, kStored, qid, node_id, udp_ep, from, true);
+            append_reply_hdr(r, kStored, qid, node_id, adv(), from, true);
             r.push_back(1);
             send_to(from, r);
             return;
@@ -772,7 +796,7 @@ struct Dht::Impl {
             const uint8_t* rest = nullptr;
             size_t left = 0;
             if (!parse_reply_hdr(pkt, has_qid, h, rest, left)) return;
-            route_add(h.sender_id, h.sender_ep);
+            route_add(h.sender_id, from);
             // NAT discovery: remember the public address peers see.
             {
                 std::lock_guard lk(mu);
@@ -857,6 +881,19 @@ Dht::~Dht() {
 
 void Dht::start() {
     if (impl_->running.exchange(true)) return;
+    // Wildcard bind ("::"/"0.0.0.0"): pick a concrete local address to
+    // advertise until the observed public endpoint is learned.
+    if (impl_->udp_ep.addr == "::" || impl_->udp_ep.addr == "0.0.0.0" ||
+        impl_->udp_ep.addr.empty()) {
+        auto eps = local_endpoints(impl_->udp_ep.port);
+        for (auto& ep : eps)
+            if (ep.family == Endpoint::Family::IPv4) {
+                impl_->local_ep = ep;
+                break;
+            }
+        if (!impl_->local_ep.valid() && !eps.empty())
+            impl_->local_ep = eps.front();
+    }
     impl_->io_thread = std::thread([this] {
         try {
             asio::error_code ec;
@@ -989,7 +1026,7 @@ void Dht::publish_self(const std::string& name, uint16_t chat_port) {
             uint32_t qid = impl_->next_qid++;
             crypto::Bytes pkt = pkt_store(qid, target, kMaxStoreTtl,
                                           value, impl_->node_id,
-                                          impl_->udp_ep);
+                                          impl_->adv());
             for (auto& n : nodes) impl_->send_to(n.ep, pkt);
         });
     }).detach();

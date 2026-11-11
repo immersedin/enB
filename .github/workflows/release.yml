@@ -26,6 +26,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history so `git describe` resolves the tag
 
       - name: Install dependencies (macOS)
         if: runner.os == 'macOS'
