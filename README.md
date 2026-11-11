@@ -60,7 +60,7 @@ p2p
 |---|---|
 | `/peerid` | показать свой Peer ID и DHT endpoint (копируется в буфер обмена) |
 | `/invite [ttl] [save <file>]` | создать подписанное приглашение (TTL сек, по умолчанию 300); код копируется в буфер обмена |
-| `/connect <code\|peer-id\|name>` | принять приглашение / подключиться по Peer ID / по имени |
+| `/connect <code\|peer-id\|name\|file> [name]` | принять приглашение / подключиться по Peer ID / по имени / из файла с кодом; `[name]` задаёт имя нового пира |
 | `/copyid <name>` | скопировать Peer ID контакта в буфер обмена |
 | `/friends` | контакты со статусом online/offline и Peer ID |
 | `/bootstrap <host:port>` | добавить DHT bootstrap-узел (сохраняется в config.ini) |
