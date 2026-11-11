@@ -24,6 +24,7 @@
 #include <functional>
 #include <iostream>
 #include <cctype>
+#include <iterator>
 #include <memory>
 #include <sstream>
 #include <mutex>
@@ -140,6 +141,20 @@ bool is_peer_id(const std::string& s) {
     for (char c : s)
         if (!std::isxdigit(static_cast<unsigned char>(c))) return false;
     return true;
+}
+
+// Read an invitation code from a file (e.g. one written by
+// `/invite save <file>`). Returns the first whitespace-separated
+// token; empty string on failure.
+std::string read_code_file(const std::string& path) {
+    std::ifstream f(path);
+    if (!f) return "";
+    std::string content((std::istreambuf_iterator<char>(f)),
+                        std::istreambuf_iterator<char>());
+    auto b = content.find_first_not_of(" \t\r\n");
+    if (b == std::string::npos) return "";
+    auto e = content.find_first_of(" \t\r\n", b);
+    return content.substr(b, e == std::string::npos ? e : e - b);
 }
 
 int64_t unix_now() {
@@ -365,7 +380,7 @@ const CmdSpec kCommands[] = {
     {"/remove", "<name>"},
     {"/chat", "<name>"},
     {"/open", "<name>"},
-    {"/connect", "<invite-code | peer-id | name>"},
+    {"/connect", "<invite-code | peer-id | name | file> [name]"},
     {"/invite", "[ttl] [save <file>]"},
     {"/copyid", "<name>"},
     {"/bootstrap", "<host:port>"},
@@ -453,8 +468,10 @@ void execute_command(ChatApp& app, const std::string& line,
         say(app, "  /add <name> <host> <port>   add friend & connect");
         say(app, "  /remove <name>        remove friend");
         say(app, "  /chat <name>          open chat (auto-connects)");
-        say(app, "  /connect <arg>        connect by invite code, peer id");
-        say(app, "                       or friend name");
+        say(app, "  /connect <arg> [name]  connect by invite code,");
+        say(app, "                       peer id, friend name or a");
+        say(app, "                       file holding the code; optional");
+        say(app, "                       [name] renames a new peer");
         say(app, "  /invite [ttl] [save <file>]  create invitation");
         say(app, "                       (code is copied to clipboard)");
         say(app, "  /peerid               show & copy this peer's id");
@@ -701,11 +718,25 @@ void execute_command(ChatApp& app, const std::string& line,
                      "/connect <code> to redeem)");
         }
     } else if (cmd == "/connect") {
-        if (args.size() != 2) {
-            say(app, "usage: /connect <invite-code | peer-id | name>");
+        if (args.size() < 2 || args.size() > 3) {
+            say(app, "usage: /connect <invite-code | peer-id | name | "
+                     "file> [name]");
             return;
         }
         std::string arg = args[1];
+        std::string name_hint = args.size() == 3 ? args[2] : "";
+
+        // An existing file means the invitation code lives inside it
+        // (see /invite save <file>); read the first token as the code.
+        if (fs::is_regular_file(arg)) {
+            std::string code = read_code_file(arg);
+            if (code.empty()) {
+                say(app, "could not read invitation code from " + arg);
+                return;
+            }
+            arg = code;
+        }
+
         crypto::Bytes blob;
         bool handled = false;
         if (base64url_decode(arg, blob)) {
@@ -716,7 +747,9 @@ void execute_command(ChatApp& app, const std::string& line,
                     for (auto& ep : inv.dht_hints) app.dht->add_bootstrap(ep);
                 std::string pid_hex = crypto::to_hex(inv.peer_id.data(),
                                                      32);
-                Friend f = ensure_peer_friend(app, pid_hex, inv.name);
+                Friend f = ensure_peer_friend(
+                    app, pid_hex,
+                    !name_hint.empty() ? name_hint : inv.name);
                 say(app, "accepted invitation from " +
                            (inv.name.empty() ? pid_hex.substr(0, 16)
                                              : inv.name) +
@@ -727,7 +760,8 @@ void execute_command(ChatApp& app, const std::string& line,
         if (!handled) {
             std::string lower = to_lower(arg);
             if (is_peer_id(lower)) {
-                Friend f = ensure_peer_friend(app, lower, "");
+                Friend f = ensure_peer_friend(app, lower,
+                                              name_hint);
                 say(app, "connecting to peer " + short_id(lower) +
                            " via DHT...");
                 if (app.net) app.net->connect_to(f);
@@ -740,7 +774,7 @@ void execute_command(ChatApp& app, const std::string& line,
         }
         if (!handled)
             say(app, "unrecognized argument — not an invitation code, "
-                     "peer id, or contact name");
+                     "peer id, contact name or readable file");
     } else if (cmd == "/copyid") {
         if (args.size() != 2) {
             say(app, "usage: /copyid <name>");
