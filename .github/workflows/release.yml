@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
   build:
@@ -44,6 +45,11 @@ jobs:
         shell: pwsh
         run: |
           $env:VCPKG_DEFAULT_BINARY_CACHE = "${{ runner.temp }}\vcpkg-binary-cache"
+          # Release-only: skip the debug build of every dependency (~2x faster cold builds)
+          $env:VCPKG_BUILD_TYPE = "release"
+          # Persist built packages in GitHub Packages so they survive across runs/branches
+          $env:VCPKG_BINARY_SOURCES = "clear;nuget,GitHub,readwrite"
+          $env:GITHUB_TOKEN = "${{ secrets.GITHUB_TOKEN }}"
           New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
           $vcpkg = "${env:VCPKG_INSTALLATION_ROOT}/vcpkg.exe"
           & $vcpkg install asio libsodium sqlcipher ftxui --triplet x64-windows-static-md
