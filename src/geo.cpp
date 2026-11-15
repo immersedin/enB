@@ -49,7 +49,8 @@ std::string curl_get(const std::string& url, int max_time) {
     }
     fs::path out = dir / ("p2p-geo-" + own_pid() + ".json");
     fs::path errf = dir / ("p2p-geo-" + own_pid() + ".err");
-    std::string cmd = "curl -fsSL --connect-timeout 5 --max-time " +
+    std::string cmd = "curl -fsSL -A \"p2p-chat\" "
+                      "--connect-timeout 5 --max-time " +
                       std::to_string(max_time) + " -o " + "\"" +
                       out.string() + "\" \"" + url + "\" 2>\"" +
                       errf.string() + "\"";
@@ -110,6 +111,52 @@ bool json_number(const std::string& js, const std::string& key,
     return end != js.c_str() + p;
 }
 
+// Percent-encode a URL query value (' ' becomes '+').
+std::string url_encode(const std::string& s) {
+    static const char* hex = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(s.size() + 16);
+    for (unsigned char c : s) {
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+            (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+            c == '.' || c == '~') {
+            out += static_cast<char>(c);
+        } else if (c == ' ') {
+            out += '+';
+        } else {
+            out += '%';
+            out += hex[c >> 4];
+            out += hex[c & 15];
+        }
+    }
+    return out;
+}
+
+// Brace-matched top-level {...} objects of a JSON array.
+std::vector<std::string> json_objects(const std::string& js) {
+    std::vector<std::string> out;
+    for (size_t i = 0; i < js.size(); ++i) {
+        if (js[i] != '{') continue;
+        int depth = 0;
+        size_t start = i;
+        for (; i < js.size(); ++i) {
+            if (js[i] == '{') ++depth;
+            else if (js[i] == '}' && --depth == 0) break;
+        }
+        if (i >= js.size()) break;
+        out.push_back(js.substr(start, i - start + 1));
+    }
+    return out;
+}
+
+// "10,381,222" style grouping for population counts.
+std::string format_count(double v) {
+    std::string s = std::to_string(static_cast<long long>(v));
+    for (int i = static_cast<int>(s.size()) - 3; i > 0; i -= 3)
+        s.insert(static_cast<size_t>(i), ",");
+    return s;
+}
+
 }  // namespace
 
 GeoInfo fetch_geo_info(const std::string& fallback_ip) {
@@ -161,4 +208,68 @@ GeoInfo fetch_geo_info(const std::string& fallback_ip) {
             g.local_ips.push_back(ep.addr);
     }
     return g;
+}
+
+std::vector<PlaceHit> search_places(const std::string& query,
+                                    int max_results,
+                                    const std::string& cursor,
+                                    std::string* next_cursor) {
+    std::vector<PlaceHit> out;
+    if (query.empty() || max_results <= 0) return out;
+    // api.cityapi.org — GeoNames settlement data, keyless.
+    std::string url = "https://api.cityapi.org/v1/cities?search=" +
+                      url_encode(query) + "&limit=" +
+                      std::to_string(max_results);
+    if (!cursor.empty()) url += "&cursor=" + url_encode(cursor);
+    std::string js = curl_get(url, 20);
+    if (js.empty()) return out;
+
+    // Pagination token for the next page.
+    if (next_cursor) {
+        size_t p = js.find("\"next_cursor\"");
+        if (p != std::string::npos) {
+            p = js.find(':', p);
+            if (p != std::string::npos) {
+                p = js.find('"', p + 1);
+                if (p != std::string::npos) {
+                    size_t e = js.find('"', p + 1);
+                    if (e != std::string::npos)
+                        *next_cursor = js.substr(p + 1, e - p - 1);
+                }
+            }
+        }
+    }
+
+    // Isolate the "data" array so the root object's braces do not
+    // swallow the per-city objects during brace matching.
+    size_t d = js.find("\"data\"");
+    if (d == std::string::npos) return out;
+    d = js.find('[', d);
+    if (d == std::string::npos) return out;
+    size_t m = js.find("\"meta\"", d);
+    std::string arr = js.substr(d + 1,
+                                m == std::string::npos
+                                    ? std::string::npos
+                                    : m - d - 1);
+
+    for (auto& obj : json_objects(arr)) {
+        PlaceHit h;
+        json_string(obj, "name", h.name);
+        if (h.name.empty()) json_string(obj, "ascii_name", h.name);
+        std::string cc;
+        json_string(obj, "country_code", cc);
+        double pop = 0;
+        bool has_pop = json_number(obj, "population", pop);
+        // latitude/longitude are JSON numbers (population may be null).
+        if (!json_number(obj, "latitude", h.lat) ||
+            !json_number(obj, "longitude", h.lon))
+            continue;
+        h.detail = h.name;
+        if (!cc.empty()) h.detail += ", " + cc;
+        if (has_pop && pop > 0) h.detail += " — pop " + format_count(pop);
+        if (h.name.empty()) continue;
+        out.push_back(std::move(h));
+        if (static_cast<int>(out.size()) >= max_results) break;
+    }
+    return out;
 }

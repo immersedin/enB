@@ -85,6 +85,7 @@ add_executable(p2p
     src/geo.cpp
     src/invite.cpp
     src/net.cpp
+    src/news.cpp
     src/selftest.cpp
     src/update.cpp
 )
@@ -133,12 +134,18 @@ if(OpenSSL_FOUND)
 endif()
 
 if(APPLE)
-    target_sources(p2p PRIVATE src/geo_macos.mm)
+    target_sources(p2p PRIVATE src/geo_macos.mm src/audio_macos.mm)
     find_library(CORELOCATION_LIB CoreLocation)
     find_library(COREFOUNDATION_LIB CoreFoundation)
     find_library(FOUNDATION_LIB Foundation)
+    # CoreAudio HAL: notification-sound output device enumeration and
+    # routing (kAudioHardwareProperty*).
+    find_library(COREAUDIO_LIB CoreAudio)
     target_link_libraries(p2p PRIVATE
-        ${CORELOCATION_LIB} ${COREFOUNDATION_LIB} ${FOUNDATION_LIB})
+        ${CORELOCATION_LIB} ${COREFOUNDATION_LIB} ${FOUNDATION_LIB}
+        ${COREAUDIO_LIB})
+else()
+    target_sources(p2p PRIVATE src/audio_other.cpp)
 endif()
 
 if(WIN32)

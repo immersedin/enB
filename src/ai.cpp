@@ -192,17 +192,7 @@ std::string chat(const AiEndpoint& ep, const std::string& system,
 std::string danger_assessment(const AiEndpoint& ep,
                               const std::string& prompt,
                               std::string* err) {
-    const char* system =
-        "You are a civilian safety analyst. You assess the danger level "
-        "for an ordinary person based ONLY on reported combat events and "
-        "their distance to the person. You never provide military "
-        "advice. Answer in EXACTLY this format:\n"
-        "LEVEL: <1-5>\n"
-        "INDEX: <0-100>\n"
-        "REASON: <one sentence, max 25 words>\n"
-        "Level 1=critical, 2=high, 3=elevated, 4=low, 5=no threat "
-        "detected by available data. Level 5 is not a safety guarantee.";
-    return chat(ep, system, prompt, err);
+    return chat(ep, kDangerSystemPrompt, prompt, err);
 }
 
 }  // namespace ai

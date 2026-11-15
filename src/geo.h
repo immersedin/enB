@@ -39,3 +39,21 @@ struct GeoInfo {
 // from a worker thread. `fallback_ip` is used when the geo service does
 // not report the client IP (e.g. the DHT-observed public endpoint).
 GeoInfo fetch_geo_info(const std::string& fallback_ip = "");
+
+// A geocoding hit from the place search (OpenStreetMap Nominatim).
+struct PlaceHit {
+    std::string name;    // short place name
+    std::string detail;  // full display name (disambiguates duplicates)
+    double lat = 0;
+    double lon = 0;
+};
+
+// Search for settlements by name via api.cityapi.org (GeoNames
+// data). Blocking (HTTPS, up to ~20 s) — call from a worker thread.
+// `cursor` continues a previous page (from `next_cursor`); the next
+// page token is returned through `next_cursor` when non-null.
+// Returns up to `max_results` hits, best first.
+std::vector<PlaceHit> search_places(const std::string& query,
+                                    int max_results = 25,
+                                    const std::string& cursor = "",
+                                    std::string* next_cursor = nullptr);
