@@ -22,6 +22,7 @@
 #include <wrl.h>
 #include <windows.devices.geolocation.h>
 #include <windows.foundation.h>
+#include <windows.foundation.collections.h>
 
 #include <memory>
 #include <optional>
@@ -29,15 +30,21 @@
 using Microsoft::WRL::ComPtr;
 using Microsoft::WRL::Make;
 using Microsoft::WRL::Wrappers::HStringReference;
-using Windows::Devices::Geolocation::GeolocationAccessStatus;
-using Windows::Devices::Geolocation::GeolocationAccuracy;
-using Windows::Devices::Geolocation::Geoposition;
-using Windows::Devices::Geolocation::IGeolocator;
-using Windows::Devices::Geolocation::IGeolocatorStatics;
-using Windows::Devices::Geolocation::IGeopoint;
-using Windows::Foundation::AsyncStatus;
-using Windows::Foundation::IAsyncOperation;
-using Windows::Foundation::IAsyncOperationCompletedHandler;
+using ABI::Windows::Devices::Geolocation::BasicGeoposition;
+using ABI::Windows::Devices::Geolocation::GeolocationAccessStatus;
+using ABI::Windows::Devices::Geolocation::Geoposition;
+using ABI::Windows::Devices::Geolocation::IGeocoordinate;
+using ABI::Windows::Devices::Geolocation::IGeocoordinateWithPoint;
+using ABI::Windows::Devices::Geolocation::IGeolocator;
+using ABI::Windows::Devices::Geolocation::IGeolocatorStatics;
+using ABI::Windows::Devices::Geolocation::IGeopoint;
+using ABI::Windows::Devices::Geolocation::IGeoposition;
+using ABI::Windows::Devices::Geolocation::PositionAccuracy;
+using ABI::Windows::Devices::Geolocation::PositionStatus;
+using ABI::Windows::Foundation::AsyncStatus;
+using ABI::Windows::Foundation::IAsyncInfo;
+using ABI::Windows::Foundation::IAsyncOperation;
+using ABI::Windows::Foundation::IAsyncOperationCompletedHandler;
 
 namespace {
 
@@ -47,6 +54,9 @@ namespace {
 struct AsyncDone {
     HANDLE event = nullptr;
     AsyncStatus status = AsyncStatus::Started;
+    ~AsyncDone() {
+        if (event) CloseHandle(event);
+    }
 };
 
 template <typename TResult>
@@ -75,25 +85,28 @@ struct WaitResult {
     AsyncStatus status = AsyncStatus::Started;
 };
 
-// Register a completion handler, start the operation and wait up to
-// timeout_ms. On timeout the operation is cancelled; the handler keeps
-// AsyncDone alive until it completes.
+// Register a completion handler and wait up to timeout_ms. WinRT async
+// operations start when created; IAsyncOperation has no Start(). On
+// timeout the operation is cancelled through IAsyncInfo; the handler
+// keeps AsyncDone alive until it completes.
 template <typename TResult>
 WaitResult wait_async(IAsyncOperation<TResult>* op, DWORD timeout_ms) {
     auto done = std::make_shared<AsyncDone>();
     done->event = CreateEventW(nullptr, FALSE, FALSE, nullptr);
     WaitResult r;
+    if (!done->event) return r;
 
     ComPtr<IAsyncOperationCompletedHandler<TResult>> handler =
         Make<AsyncHandler<TResult>>(done);
     if (FAILED(op->put_Completed(handler.Get()))) return r;
-    if (FAILED(op->Start())) return r;
 
     if (WaitForSingleObject(done->event, timeout_ms) == WAIT_OBJECT_0) {
         r.completed = true;
         r.status = done->status;
     } else {
-        op->Cancel();
+        ComPtr<IAsyncInfo> info;
+        if (SUCCEEDED(op->QueryInterface(IID_PPV_ARGS(&info))) && info)
+            info->Cancel();
     }
     return r;
 }
@@ -111,12 +124,11 @@ std::optional<GeoFix> platform_location() {
 
     std::optional<GeoFix> result;
     do {
-        ComPtr<Windows::Foundation::IInspectable> insp;
-        HStringReference cls(L"Windows.Devices.Geolocation.Geolocator");
-        if (FAILED(RoGetActivationFactory(cls.Get(), IID_PPV_ARGS(&insp))))
-            break;
+        HStringReference cls(RuntimeClass_Windows_Devices_Geolocation_Geolocator);
         ComPtr<IGeolocatorStatics> statics;
-        if (FAILED(insp.As(&statics))) break;
+        if (FAILED(RoGetActivationFactory(cls.Get(), IID_PPV_ARGS(&statics))) ||
+            !statics)
+            break;
 
         // Consent check first — may show the system prompt, so allow
         // the user up to a minute to respond.
@@ -124,40 +136,43 @@ std::optional<GeoFix> platform_location() {
         if (FAILED(statics->RequestAccessAsync(&reqOp)) || !reqOp) break;
         WaitResult wr = wait_async(reqOp.Get(), 60000);
         if (!wr.completed || wr.status != AsyncStatus::Completed) break;
-        GeolocationAccessStatus access = GeolocationAccessStatus_Unspecified;
+        GeolocationAccessStatus access =
+            GeolocationAccessStatus::GeolocationAccessStatus_Unspecified;
         if (FAILED(reqOp->GetResults(&access)) ||
-            access != GeolocationAccessStatus_Allowed)
+            access != GeolocationAccessStatus::GeolocationAccessStatus_Allowed)
             break;
 
-        ComPtr<Windows::Foundation::IInspectable> locInsp;
-        if (FAILED(statics->ActivateInstance(&locInsp))) break;
+        ComPtr<IInspectable> inspectable;
+        if (FAILED(RoActivateInstance(cls.Get(), &inspectable)) || !inspectable)
+            break;
         ComPtr<IGeolocator> locator;
-        if (FAILED(locInsp.As(&locator))) break;
-        locator->put_DesiredAccuracy(GeolocationAccuracy_High);
-        GeolocationAccessStatus locStatus = GeolocationAccessStatus_Unspecified;
+        if (FAILED(inspectable.As(&locator)) || !locator) break;
+        locator->put_DesiredAccuracy(PositionAccuracy::PositionAccuracy_High);
+
+        PositionStatus locStatus = PositionStatus::PositionStatus_NotInitialized;
         if (FAILED(locator->get_LocationStatus(&locStatus)) ||
-            locStatus != GeolocationAccessStatus_Allowed)
+            locStatus == PositionStatus::PositionStatus_Disabled ||
+            locStatus == PositionStatus::PositionStatus_NotAvailable)
             break;
 
         ComPtr<IAsyncOperation<Geoposition*>> posOp;
         if (FAILED(locator->GetGeopositionAsync(&posOp)) || !posOp) break;
         WaitResult pw = wait_async(posOp.Get(), 30000);
-        if (!pw.completed || pw.status != AsyncStatus::Completed) {
-            posOp->Cancel();
-            break;
-        }
-        Geoposition* pos = nullptr;
+        if (!pw.completed || pw.status != AsyncStatus::Completed) break;
+
+        ComPtr<IGeoposition> pos;
         if (FAILED(posOp->GetResults(&pos)) || !pos) break;
+        ComPtr<IGeocoordinate> coord;
+        if (FAILED(pos->get_Coordinate(&coord)) || !coord) break;
+        ComPtr<IGeocoordinateWithPoint> coordWithPoint;
+        if (FAILED(coord.As(&coordWithPoint)) || !coordWithPoint) break;
         ComPtr<IGeopoint> point;
-        if (SUCCEEDED(pos->get_Coordinate(&point)) && point) {
-            double lat = 0, lon = 0, acc = -1;
-            if (SUCCEEDED(point->get_Latitude(&lat)) &&
-                SUCCEEDED(point->get_Longitude(&lon))) {
-                point->get_Accuracy(&acc);
-                result = GeoFix{lat, lon, acc};
-            }
-        }
-        pos->Release();
+        if (FAILED(coordWithPoint->get_Point(&point)) || !point) break;
+        BasicGeoposition geopos{};
+        if (FAILED(point->get_Position(&geopos))) break;
+        double acc = -1;
+        coord->get_Accuracy(&acc);
+        result = GeoFix{geopos.Latitude, geopos.Longitude, acc};
     } while (false);
 
     if (uninit) RoUninitialize();
