@@ -1,8 +1,8 @@
 class P2p < Formula
   desc "Decentralized end-to-end encrypted chat over a Kademlia DHT"
   homepage "https://github.com/immersedin/enB"
-  url "https://github.com/immersedin/enB/archive/refs/tags/v0.5.0.tar.gz"
-  sha256 "23d307627eb53888404f8c4db5745856afb55294738c8d5911a8d740dfc73233"
+  url "https://github.com/immersedin/enB/archive/refs/tags/v0.5.1.tar.gz"
+  sha256 "4c8c18a04d4b608fc1178d1e3831cc99ecae3b14515cf657187d03fe4a66fdd0"
   head "https://github.com/immersedin/enB.git", branch: "main"
 
   depends_on "cmake" => :build
