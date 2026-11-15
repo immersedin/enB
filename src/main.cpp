@@ -18,12 +18,14 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <cctype>
+#include <cstring>
 #include <iterator>
 #include <memory>
 #include <sstream>
@@ -41,10 +43,13 @@
 #include <ftxui/screen/color.hpp>
 #include <ftxui/screen/terminal.hpp>
 
+#include "ai.h"
 #include "crypto.h"
+#include "danger.h"
 #include "db.h"
 #include "dht.h"
 #include "endpoint.h"
+#include "geo.h"
 #include "invite.h"
 #include "net.h"
 #include "selftest.h"
@@ -79,6 +84,10 @@ struct Config {
     int dht_port = 0;  // 0 = same number as port (UDP)
     std::string name = "me";
     std::vector<std::string> bootstraps;  // raw "host:port" DHT endpoints
+    std::string openai_key;               // legacy: for /danger ai
+    std::string ai_key;                   // AI provider key (Groq etc.)
+    std::string ai_base;                  // chat-completions URL (optional)
+    std::string ai_model;                 // model name (optional)
 };
 
 Config load_config(const std::string& path) {
@@ -110,6 +119,14 @@ Config load_config(const std::string& path) {
             c.name = v;
         } else if (k == "bootstrap") {
             if (!v.empty()) c.bootstraps.push_back(v);
+        } else if (k == "openai_key") {
+            c.openai_key = v;
+        } else if (k == "ai_key") {
+            c.ai_key = v;
+        } else if (k == "ai_base") {
+            c.ai_base = v;
+        } else if (k == "ai_model") {
+            c.ai_model = v;
         }
     }
     return c;
@@ -165,9 +182,9 @@ int64_t unix_now() {
 
 // Text rows available for the scrollable pane. The fixed chrome around it
 // is: header (1) + separator (1) + input (1) + status line (1) +
-// frame borders (2).
+// window border (2) + inner padding (2).
 int pane_rows() {
-    return std::max(3, Terminal::Size().dimy - 6);
+    return std::max(3, Terminal::Size().dimy - 8);
 }
 
 // Copy `text` to the OS clipboard via a platform tool. The payload goes
@@ -231,9 +248,36 @@ struct ChatApp {
 
     // Auto-update state. latest_release/update_available are guarded by
     // update_mu; update_running is atomic.
-    std::mutex update_mu;
+    mutable std::mutex update_mu;
     updater::ReleaseInfo latest_release;
     std::atomic<bool> update_running{false};
+
+    // Geolocation state, filled in by a worker thread after startup.
+    mutable std::mutex geo_mu;
+    GeoInfo geo;
+    bool geo_done = false;
+
+    // Manually reported combat events for the danger assessment.
+    // Only touched on the UI thread.
+    std::vector<DangerEvent> danger_events;
+
+    // AI (LLM) danger verdict shown on the Main tab. ai_danger is
+    // written by the worker thread under ai_mu; ai_last_query and
+    // ai_running implement the 60 s refresh throttle.
+    struct AiDanger {
+        bool running = false;
+        bool have_verdict = false;
+        int level = 0;
+        int index = -1;
+        std::string reason;
+        std::string error;
+        std::string model;
+        int64_t ts = 0;  // last attempt, unix seconds
+    };
+    mutable std::mutex ai_mu;
+    AiDanger ai_danger;
+    std::atomic<bool> ai_running{false};
+    int64_t ai_last_query = 0;
 
     ChatApp(const std::string& dir, const Config& cfg)
         : data_dir(dir), config(cfg), db(dir) {}
@@ -344,6 +388,214 @@ void open_chat(ChatApp& app, FriendView& fv) {
 }
 
 // ------------------------------------------------------------------
+// Danger assessment helpers
+// ------------------------------------------------------------------
+void save_danger_events(ChatApp& app) {
+    save_events(app.data_dir + "/danger.txt", app.danger_events);
+}
+
+// User position + uncertainty (km) for the danger model.
+bool danger_position(const ChatApp& app, double& lat, double& lon,
+                     double& unc_km) {
+    std::lock_guard lk(app.geo_mu);
+    if (!app.geo_done || !app.geo.ok ||
+        (app.geo.lat == 0 && app.geo.lon == 0))
+        return false;
+    lat = app.geo.lat;
+    lon = app.geo.lon;
+    unc_km = app.geo.precise
+                 ? std::max(0.05, app.geo.accuracy_m / 1000.0)
+                 : 25.0;  // IP geolocation is city-level at best
+    return true;
+}
+
+DangerAssessment assess_now(const ChatApp& app) {
+    double lat = 0, lon = 0, unc = 0;
+    bool has = danger_position(app, lat, lon, unc);
+    return assess_danger(has, lat, lon, unc, unix_now(),
+                         dedup_events(app.danger_events));
+}
+
+// Prompt for the AI (ChatGPT) danger assessment: position + all known
+// combat events + the local model's verdict for reference.
+std::string build_danger_prompt(const ChatApp& app) {
+    double lat = 0, lon = 0, unc = 0;
+    bool has = danger_position(app, lat, lon, unc);
+    bool precise = false;
+    std::string city, country;
+    {
+        std::lock_guard lk(app.geo_mu);
+        precise = app.geo.precise;
+        city = app.geo.city;
+        country = app.geo.country;
+    }
+    auto evs = dedup_events(app.danger_events);
+    int64_t now = unix_now();
+    auto a = assess_now(app);
+
+    std::ostringstream p;
+    p << "Assess the civilian danger level for a person located at ";
+    if (has) {
+        p << lat << ", " << lon << " (position uncertainty ±";
+        char buf[32];
+        std::snprintf(buf, sizeof(buf), "%.1f", unc);
+        p << buf << " km, " << (precise ? "GPS" : "IP geolocation")
+          << ")";
+    } else {
+        p << "UNKNOWN (no position fix available)";
+    }
+    if (!city.empty() || !country.empty()) {
+        p << " — ";
+        if (!city.empty()) p << city;
+        if (!city.empty() && !country.empty()) p << ", ";
+        p << country;
+    }
+    p << ".\n\nCurrent Unix time: " << now << "\n\n";
+    p << "Reported combat events (" << evs.size() << "):\n";
+    if (evs.empty()) p << "(none)\n";
+    for (size_t i = 0; i < evs.size(); ++i) {
+        const auto& e = evs[i];
+        double age_h = std::max(0.0, (now - e.ts) / 3600.0);
+        p << "#" << i << " " << kind_name(e.kind) << " at " << e.lat
+          << "," << e.lon << ", " << (e.ongoing ? "ongoing" : "ended")
+          << ", happened " << age_h << "h ago, intensity "
+          << e.intensity << "/3, confirmations " << e.confirmations
+          << "/10";
+        if (!e.note.empty()) p << ", note: " << e.note;
+        p << "\n";
+    }
+    if (a.computed) {
+        p << "\nLocal statistical model verdict: level " << a.level
+          << " (" << level_name(a.level) << "), index " << a.index
+          << "/100. Use it as a reference but apply your own judgement.\n";
+    }
+    p << "\nReturn LEVEL, INDEX and a one-sentence REASON.";
+    return p.str();
+}
+
+// Parse "LEVEL: n" / "INDEX: n" out of the model reply.
+bool parse_ai_verdict(const std::string& reply, int& level,
+                      int& index) {
+    bool got_l = false, got_i = false;
+    auto find_num = [&](const char* key, int& out) {
+        size_t p = reply.find(key);
+        if (p == std::string::npos) return false;
+        p += std::strlen(key);
+        while (p < reply.size() &&
+               (reply[p] == ' ' || reply[p] == ':' || reply[p] == '\n'))
+            ++p;
+        char* end = nullptr;
+        long v = std::strtol(reply.c_str() + p, &end, 10);
+        if (end == reply.c_str() + p) return false;
+        out = static_cast<int>(v);
+        return true;
+    };
+    got_l = find_num("LEVEL", level);
+    got_i = find_num("INDEX", index);
+    return got_l && got_i;
+}
+
+// Extract the "REASON: ..." line from the model reply.
+std::string parse_ai_reason(const std::string& reply) {
+    size_t p = reply.find("REASON");
+    if (p == std::string::npos) return "";
+    p = reply.find(':', p);
+    if (p == std::string::npos) return "";
+    ++p;
+    size_t e = reply.find('\n', p);
+    std::string s = reply.substr(p, e == std::string::npos ? e : e - p);
+    auto b = s.find_first_not_of(" \t\r");
+    auto en = s.find_last_not_of(" \t\r");
+    return b == std::string::npos ? "" : s.substr(b, en - b + 1);
+}
+
+// Human "12s/5m/3h/2d ago" for timestamps.
+std::string format_age(int64_t ts) {
+    int64_t d = std::max<int64_t>(0, unix_now() - ts);
+    if (d < 60) return std::to_string(d) + "s ago";
+    if (d < 3600) return std::to_string(d / 60) + "m ago";
+    if (d < 86400) return std::to_string(d / 3600) + "h ago";
+    return std::to_string(d / 86400) + "d ago";
+}
+
+// Danger level -> color, shared by the header badge and the Main tab.
+Color level_color(int level) {
+    switch (level) {
+        case 1: return Color::Red;
+        case 2: return Color::RGB(255, 140, 0);
+        case 3: return Color::Yellow;
+        case 4: return Color::Green;
+        default: return Color::GrayDark;
+    }
+}
+
+// Kick off an AI danger assessment in the background. Throttled to
+// one request per 60 s unless `force`; the verdict lands in
+// app.ai_danger and the raw reply is mirrored into the log.
+// Returns false when the location fix is not ready yet.
+bool kick_ai_danger(ChatApp& app, bool force,
+                    const std::function<void()>& wake) {
+    int64_t now = unix_now();
+    if (!force && now - app.ai_last_query < 60) return true;
+    {
+        std::lock_guard lk(app.geo_mu);
+        if (!app.geo_done) return false;
+    }
+    if (app.ai_running.exchange(true)) return true;
+    app.ai_last_query = now;
+
+    ai::AiEndpoint ep;
+    if (!app.config.ai_base.empty()) ep.base_url = app.config.ai_base;
+    if (!app.config.ai_model.empty()) ep.model = app.config.ai_model;
+    ep.api_key = app.config.ai_key;
+    std::string prompt = build_danger_prompt(app);
+    {
+        std::lock_guard lk(app.ai_mu);
+        app.ai_danger.running = true;
+        app.ai_danger.error.clear();
+        app.ai_danger.model = ep.model;
+    }
+    say(app, "querying " + ep.model + " for danger assessment...");
+    std::thread([&app, wake, prompt, ep]() {
+        std::string err;
+        std::string reply = ai::danger_assessment(ep, prompt, &err);
+        int level = 0, index = -1;
+        bool ok = !reply.empty() && parse_ai_verdict(reply, level, index);
+        {
+            std::lock_guard lk(app.ai_mu);
+            auto& d = app.ai_danger;
+            d.running = false;
+            d.ts = unix_now();
+            if (ok) {
+                d.have_verdict = true;
+                d.level = level;
+                d.index = index;
+                d.reason = parse_ai_reason(reply);
+                d.error.clear();
+            } else {
+                d.error = reply.empty()
+                              ? ("request failed: " + err)
+                              : "could not parse AI reply";
+            }
+        }
+        app.ai_running = false;
+        // Mirror the reply into the log tab.
+        if (!reply.empty()) {
+            std::istringstream rs(reply);
+            std::string ln;
+            while (std::getline(rs, ln)) {
+                if (!ln.empty() && ln.back() == '\r') ln.pop_back();
+                if (!ln.empty()) post_notice(app, "  ai| " + ln, wake);
+            }
+        } else {
+            post_notice(app, "AI assessment failed: " + err, wake);
+        }
+        if (wake) wake();
+    }).detach();
+    return true;
+}
+
+// ------------------------------------------------------------------
 // Peer-id / invitation helpers
 // ------------------------------------------------------------------
 // Find a friend by peer id (x25519 pub hex), creating a placeholder
@@ -384,6 +636,9 @@ const CmdSpec kCommands[] = {
     {"/invite", "[ttl] [save <file>]"},
     {"/copyid", "<name>"},
     {"/bootstrap", "<host:port>"},
+    {"/event", "add|remove|list|clear ..."},
+    {"/events", ""},
+    {"/danger", "[ai]"},
 };
 
 const CmdSpec* find_cmd(const std::string& name) {
@@ -478,6 +733,14 @@ void execute_command(ChatApp& app, const std::string& line,
         say(app, "  /copyid <name>        copy friend's peer id");
         say(app, "  /dht                  DHT status");
         say(app, "  /bootstrap <host:port>  add DHT bootstrap node");
+        say(app, "  /event add <lat> <lon> [kind] [age=<h>] [conf=<n>]");
+        say(app, "                       [ongoing|ended] [note]  report");
+        say(app, "                       a combat event (kinds:");
+        say(app, "                       shelling|strike|ground|other)");
+        say(app, "  /event remove <n> /events /events clear");
+        say(app, "  /danger [ai]           civilian danger assessment;");
+        say(app, "                       'ai' asks an LLM (Pollinations,");
+        say(app, "                       no key needed)");
         say(app, "  /close                back to console");
         say(app, "  /update               check GitHub for updates & install");
         say(app, "  /version              show version info");
@@ -799,6 +1062,187 @@ void execute_command(ChatApp& app, const std::string& line,
                        " copied to clipboard");
         else
             say(app, "could not copy to clipboard");
+    } else if (cmd == "/event") {
+        if (args.size() < 2) {
+            say(app, "usage: /event add|remove|list|clear ...  "
+                     "(see /help)");
+            return;
+        }
+        std::string sub = to_lower(args[1]);
+        if (sub == "add") {
+            if (args.size() < 4) {
+                say(app, "usage: /event add <lat> <lon> [kind] "
+                         "[age=<h>] [conf=<n>] [sev=<1-3>] "
+                         "[ongoing|ended] [note...]");
+                say(app, "kinds: shelling|strike|ground|other");
+                return;
+            }
+            double lat = 0, lon = 0;
+            try {
+                lat = std::stod(args[2]);
+                lon = std::stod(args[3]);
+            } catch (...) {
+            }
+            if (lat < -90 || lat > 90 || lon < -180 || lon > 180) {
+                say(app, "invalid coordinates");
+                return;
+            }
+            DangerEvent e;
+            e.lat = lat;
+            e.lon = lon;
+            e.ts = unix_now();
+            double age_h = 0;
+            bool status_set = false, kind_set = false;
+            std::vector<std::string> note_words;
+            for (size_t i = 4; i < args.size(); ++i) {
+                const std::string& a = args[i];
+                if (a.rfind("age=", 0) == 0) {
+                    try {
+                        age_h = std::stod(a.substr(4));
+                    } catch (...) {
+                    }
+                } else if (a.rfind("conf=", 0) == 0) {
+                    try {
+                        e.confirmations = std::stoi(a.substr(5));
+                    } catch (...) {
+                    }
+                } else if (a.rfind("sev=", 0) == 0) {
+                    try {
+                        e.intensity = std::stoi(a.substr(4));
+                    } catch (...) {
+                    }
+                } else if (a == "ongoing" || a == "ended") {
+                    e.ongoing = (a == "ongoing");
+                    status_set = true;
+                } else {
+                    bool ok = false;
+                    EventKind k = parse_kind(a, &ok);
+                    if (ok && !kind_set) {
+                        e.kind = k;
+                        kind_set = true;
+                    } else {
+                        note_words.push_back(a);
+                    }
+                }
+            }
+            if (!status_set) e.ongoing = (age_h == 0);
+            e.confirmations = std::clamp(e.confirmations, 1, 10);
+            e.intensity = std::clamp(e.intensity, 1, 3);
+            if (age_h < 0) age_h = 0;
+            e.ts = unix_now() - static_cast<int64_t>(age_h * 3600);
+            std::string note;
+            for (auto& w : note_words) {
+                if (!note.empty()) note += " ";
+                note += w;
+            }
+            e.note = note;
+            app.danger_events.push_back(e);
+            app.danger_events = dedup_events(app.danger_events);
+            save_danger_events(app);
+            app.ai_last_query = 0;
+            kick_ai_danger(app, false, wake);
+            say(app, "event added: " + std::string(kind_name(e.kind)) +
+                       " at " + std::to_string(lat) + "," +
+                       std::to_string(lon) + " (" +
+                       std::to_string(app.danger_events.size()) +
+                       " stored)");
+        } else if (sub == "remove") {
+            if (args.size() != 3) {
+                say(app, "usage: /event remove <n>   (n from /events)");
+                return;
+            }
+            int n = -1;
+            try {
+                n = std::stoi(args[2]);
+            } catch (...) {
+            }
+            if (n < 0 || n >= static_cast<int>(app.danger_events.size())) {
+                say(app, "no such event index");
+                return;
+            }
+            app.danger_events.erase(app.danger_events.begin() + n);
+            save_danger_events(app);
+            app.ai_last_query = 0;
+            kick_ai_danger(app, false, wake);
+            say(app, "event removed");
+        } else if (sub == "clear") {
+            app.danger_events.clear();
+            save_danger_events(app);
+            app.ai_last_query = 0;
+            kick_ai_danger(app, false, wake);
+            say(app, "all events cleared");
+        } else {
+            say(app, "usage: /event add|remove|list|clear ...");
+        }
+    } else if (cmd == "/events") {
+        if (app.danger_events.empty()) {
+            say(app, "no combat events — /event add <lat> <lon> ...");
+        }
+        double lat = 0, lon = 0, unc = 0;
+        bool has = danger_position(app, lat, lon, unc);
+        int64_t now = unix_now();
+        for (size_t i = 0; i < app.danger_events.size(); ++i) {
+            const auto& e = app.danger_events[i];
+            double age_h = std::max(0.0, (now - e.ts) / 3600.0);
+            std::string line = "  #" + std::to_string(i) + " " +
+                               kind_name(e.kind) + " " +
+                               std::to_string(e.lat) + "," +
+                               std::to_string(e.lon);
+            char age[32];
+            std::snprintf(age, sizeof(age), "%.1f", age_h);
+            line += "  age " + std::string(age) + "h";
+            line += e.ongoing ? "  ONGOING" : "  ended";
+            line += "  conf " + std::to_string(e.confirmations);
+            if (has) {
+                char dist[32];
+                std::snprintf(dist, sizeof(dist), "%.1f",
+                              geo_distance_km(lat, lon, e.lat, e.lon));
+                line += "  dist " + std::string(dist) + "km";
+            }
+            if (!e.note.empty()) line += "  — " + e.note;
+            say(app, line);
+        }
+    } else if (cmd == "/danger") {
+        if (args.size() > 1 && to_lower(args[1]) == "ai") {
+            if (kick_ai_danger(app, true, wake))
+                say(app, "AI assessment requested "
+                         "(auto-refreshes every 60 s)");
+            else
+                say(app, "AI assessment unavailable — "
+                         "waiting for location fix");
+            return;
+        }
+        double lat = 0, lon = 0, unc = 0;
+        bool has = danger_position(app, lat, lon, unc);
+        auto evs = dedup_events(app.danger_events);
+        auto a = assess_danger(has, lat, lon, unc, unix_now(), evs);
+        if (!a.computed) {
+            say(app, "position unknown — waiting for geo fix");
+        } else {
+            say(app, "danger level: L" + std::to_string(a.level) + " (" +
+                       level_name(a.level) + "), index " +
+                       std::to_string(a.index) + "/100");
+            say(app, "position uncertainty: ±" +
+                       std::to_string(static_cast<int>(unc)) + " km");
+            if (a.top.empty()) {
+                say(app, "no combat events affect this position — "
+                         "level 5 means 'no threat detected', "
+                         "not a safety guarantee");
+            }
+            for (auto& c : a.top) {
+                const auto& e = evs[c.event_index];
+                char line[256];
+                std::snprintf(
+                    line, sizeof(line),
+                    "  #%zu %s %.1fkm away (eff %.1fkm), age %.1fh, "
+                    "contribution %.0f",
+                    c.event_index, kind_name(e.kind), c.raw_dist_km,
+                    c.dist_km,
+                    std::max(0.0, (unix_now() - e.ts) / 3600.0),
+                    c.contribution);
+                say(app, line);
+            }
+        }
     } else if (cmd == "/quit" || cmd == "/exit") {
         app.net->stop();
         if (app.dht) app.dht->stop();
@@ -811,11 +1255,15 @@ void execute_command(ChatApp& app, const std::string& line,
 // ------------------------------------------------------------------
 // Components
 // ------------------------------------------------------------------
-Element render_friends(const ChatApp& app) {
-    std::vector<Element> rows;
+Element pane_window(const std::vector<Element>& all, int scroll,
+                    int& total_out);
+
+Element render_friends(const ChatApp& app, int scroll, int& total_out) {
+    std::vector<Element> all;
     if (app.friends.empty()) {
-        rows.push_back(text("  no friends — /add <name> <host> <port>") |
-                       color(Color::GrayDark));
+        all.push_back(text("no friends yet") | color(Color::GrayDark));
+        all.push_back(text("/add <name> <host> <port>") |
+                      color(Color::GrayDark));
     }
     for (auto& fv : app.friends) {
         bool open = fv.f.id == app.open_friend_id;
@@ -823,17 +1271,18 @@ Element render_friends(const ChatApp& app) {
                                 ? "dht:" + short_id(fv.f.x25519_pub)
                                 : fv.f.host + ":" +
                                       std::to_string(fv.f.port);
-        std::string label =
-            (open ? ">" : " ") + std::string(" ") +
-            (fv.online ? "(*)" : "( )") + " " + fv.display_name + "   " +
-            where;
-        rows.push_back(text(label) |
-                       color(open ? Color::Cyan : Color::White));
+        Element name = text(fv.display_name);
+        name = open ? name | bold | color(Color::Cyan)
+                    : name | color(Color::White);
+        all.push_back(hbox({
+            text(fv.online ? "● " : "○ ") |
+                color(fv.online ? Color::Green : Color::GrayDark),
+            name,
+            filler(),
+            text(where) | color(Color::GrayDark),
+        }));
     }
-    return vbox({text(" Friends ") | bold | color(Color::Yellow),
-                 separator(),
-                 vbox(std::move(rows)) | flex}) |
-           frame | flex;
+    return pane_window(all, scroll, total_out);
 }
 
 // Largest scroll offset that still shows the oldest line.
@@ -861,65 +1310,326 @@ std::pair<size_t, size_t> scroll_window(size_t total, int scroll,
     return {start, end};
 }
 
-Element render_console(const ChatApp& app) {
-    std::vector<Element> rows;
-    const size_t total = app.console.size();
+// Apply the shared scroll window to a list of row elements and report
+// the total row count for scroll clamping.
+Element pane_window(const std::vector<Element>& all, int scroll,
+                    int& total_out) {
     int visible = pane_rows();
-    bool overflow = total > static_cast<size_t>(visible);
+    bool overflow = all.size() > static_cast<size_t>(visible);
     if (overflow) --visible;  // room for the scroll indicator
-    auto [start, end] =
-        scroll_window(total, app.console_scroll, visible);
+    auto [start, end] = scroll_window(all.size(), scroll, visible);
+    std::vector<Element> rows;
     if (overflow) {
         rows.push_back(text("  lines " + std::to_string(start + 1) + "-" +
                             std::to_string(end) + " of " +
-                            std::to_string(total) +
-                            (app.console_scroll > 0
-                                 ? "  (scrolled up — PgDn/PgUp)"
-                                 : "")) |
+                            std::to_string(all.size()) +
+                            (scroll > 0 ? "  (scrolled up — PgDn/PgUp)"
+                                        : "")) |
                        color(Color::GrayDark));
     }
-    if (start == end) {
-        rows.push_back(text("P2P Secure Chat") | bold |
-                       color(Color::Cyan));
-        rows.push_back(text("type /help for commands") |
-                       color(Color::GrayDark));
+    for (size_t i = start; i < end; ++i) rows.push_back(all[i]);
+    total_out = static_cast<int>(all.size());
+    return vbox(std::move(rows)) | flex | borderEmpty;
+}
+
+Element render_console(const ChatApp& app) {
+    std::vector<Element> all;
+    if (app.console.empty()) {
+        all.push_back(text("P2P Secure Chat") | bold |
+                      color(Color::Cyan));
+        all.push_back(text("type /help for commands") |
+                      color(Color::GrayDark));
     } else {
-        for (size_t i = start; i < end; ++i)
-            rows.push_back(text(app.console[i]));
+        for (auto& l : app.console) all.push_back(text(l));
     }
-    return vbox(std::move(rows)) | flex | frame;
+    int total;
+    return pane_window(all, app.console_scroll, total);
 }
 
 Element render_chat_lines(const FriendView& fv) {
-    std::vector<Element> rows;
-    const size_t total = fv.lines.size();
-    int visible = pane_rows();
-    bool overflow = total > static_cast<size_t>(visible);
-    if (overflow) --visible;  // room for the scroll indicator
-    auto [start, end] = scroll_window(total, fv.chat_scroll, visible);
-    if (overflow) {
-        rows.push_back(text("  lines " + std::to_string(start + 1) + "-" +
-                            std::to_string(end) + " of " +
-                            std::to_string(total) +
-                            (fv.chat_scroll > 0
-                                 ? "  (scrolled up — PgDn/PgUp)"
-                                 : "")) |
-                       color(Color::GrayDark));
-    }
-    if (start == end) {
-        rows.push_back(text("  no messages yet") |
-                       color(Color::GrayDark));
+    std::vector<Element> all;
+    if (fv.lines.empty()) {
+        all.push_back(text("  no messages yet") |
+                      color(Color::GrayDark));
     } else {
-        for (size_t i = start; i < end; ++i) {
-            const auto& l = fv.lines[i];
-            rows.push_back(hbox({
+        for (auto& l : fv.lines) {
+            all.push_back(hbox({
                 text(l.outgoing ? "you: " : fv.display_name + ": ") |
-                    color(l.outgoing ? Color::Green : Color::Cyan) | bold,
+                    color(l.outgoing ? Color::Green : Color::Cyan) |
+                    bold,
                 text(l.text),
             }));
         }
     }
-    return vbox(std::move(rows)) | flex | frame;
+    int total;
+    return pane_window(all, fv.chat_scroll, total);
+}
+
+// ------------------------------------------------------------------
+// Main tab: prominent danger level + system state overview.
+// ------------------------------------------------------------------
+Element render_main_view(const ChatApp& app, int scroll,
+                         int& total_out) {
+    std::vector<Element> all;
+    int64_t now = unix_now();
+
+    DangerAssessment a = assess_now(app);
+    ChatApp::AiDanger ai;
+    {
+        std::lock_guard lk(app.ai_mu);
+        ai = app.ai_danger;
+    }
+    double lat = 0, lon = 0, unc = 0;
+    bool has_pos = danger_position(app, lat, lon, unc);
+
+    // ---- danger headline ----
+    all.push_back(text(" DANGER ") | bold | color(Color::Yellow));
+    int lvl = ai.have_verdict ? ai.level
+                              : (a.computed ? a.level : 0);
+    int idx = ai.have_verdict ? ai.index
+                              : (a.computed ? a.index : -1);
+    if (lvl > 0) {
+        Color lc = level_color(lvl);
+        all.push_back(text("  L" + std::to_string(lvl) + "  " +
+                           std::string(level_name(lvl))) |
+                      bold | color(lc));
+        if (idx >= 0) {
+            all.push_back(hbox({
+                text("index ") | dim,
+                gauge(idx / 100.0f) | size(WIDTH, EQUAL, 24),
+                text(" " + std::to_string(idx) + "/100") | bold,
+            }));
+        }
+        std::string meta;
+        if (ai.have_verdict) {
+            meta = "AI verdict • updated " + format_age(ai.ts);
+            if (now - ai.ts > 130) meta += " (stale)";
+        } else if (ai.running) {
+            meta = "AI assessment in progress...";
+        } else if (ai.ts == 0) {
+            meta = "AI assessment pending";
+        } else {
+            meta = "AI unavailable";
+        }
+        all.push_back(text("  " + meta +
+                           (ai.model.empty() ? "" : "  •  " + ai.model)) |
+                      dim);
+        if (!ai.reason.empty())
+            all.push_back(text("  " + ai.reason) | color(Color::Cyan));
+        if (!ai.error.empty())
+            all.push_back(text("  AI error: " + ai.error) |
+                          color(Color::Red));
+    } else {
+        all.push_back(text("  level unknown — waiting for data") |
+                      color(Color::GrayDark));
+    }
+    if (a.computed) {
+        all.push_back(text("  local model: L" +
+                           std::to_string(a.level) + " (" +
+                           level_name(a.level) + "), index " +
+                           std::to_string(a.index) + "/100") |
+                      dim);
+    }
+    if (has_pos) {
+        std::string place, src;
+        {
+            std::lock_guard lk(app.geo_mu);
+            src = app.geo.precise ? "GPS" : "IP geolocation";
+            if (!app.geo.city.empty()) {
+                place = app.geo.city;
+                if (!app.geo.country.empty())
+                    place += ", " + app.geo.country;
+            } else if (!app.geo.country.empty()) {
+                place = app.geo.country;
+            }
+        }
+        char buf[256];
+        std::snprintf(buf, sizeof(buf),
+                      "position: %.4f, %.4f  ±%.1f km (%s)%s", lat,
+                      lon, unc, src.c_str(),
+                      place.empty() ? "" : (" — " + place).c_str());
+        all.push_back(text("  " + std::string(buf)) | dim);
+    } else {
+        all.push_back(text("  position unknown") |
+                      color(Color::GrayDark));
+    }
+    auto evs = dedup_events(app.danger_events);
+    int shown = 0;
+    for (auto& c : a.top) {
+        if (shown++ >= 5) break;
+        const auto& e = evs[c.event_index];
+        char line[256];
+        std::snprintf(
+            line, sizeof(line),
+            "  event #%zu %s %.1fkm (eff %.1fkm), age %.1fh, "
+            "contrib %.0f",
+            c.event_index, kind_name(e.kind), c.raw_dist_km,
+            c.dist_km, std::max(0.0, (now - e.ts) / 3600.0),
+            c.contribution);
+        all.push_back(text(line) | dim);
+    }
+    if (a.top.empty() && a.computed)
+        all.push_back(text("  no combat events affect this position") |
+                      dim);
+
+    // ---- system state ----
+    all.push_back(separator() | color(Color::GrayDark));
+    all.push_back(text(" SYSTEM ") | bold | color(Color::Yellow));
+    all.push_back(text("  version " APP_VERSION "   name " +
+                       app.config.name) |
+                  dim);
+    {
+        std::string fp =
+            crypto::to_hex(app.identity.x25519.pub.data(), 8);
+        all.push_back(text("  peer " + peer_id_hex(app.identity)) | dim);
+        all.push_back(text("  fingerprint " + fp + "   tcp:" +
+                           std::to_string(app.config.port) + "   udp:" +
+                           std::to_string(app.config.dht_port)) |
+                      dim);
+    }
+    {
+        std::lock_guard lk(app.geo_mu);
+        if (app.geo_done && !app.geo.ip.empty()) {
+            all.push_back(text("  public ip " + app.geo.ip +
+                               (app.geo.isp.empty()
+                                    ? ""
+                                    : " (" + app.geo.isp + ")")) |
+                          dim);
+        }
+    }
+    {
+        int online = 0;
+        for (auto& fv : app.friends)
+            if (fv.online) ++online;
+        all.push_back(text("  contacts " +
+                           std::to_string(app.friends.size()) + " (" +
+                           std::to_string(online) + " online)") |
+                      dim);
+    }
+    if (app.dht) {
+        all.push_back(text("  dht nodes " +
+                           std::to_string(app.dht->known_nodes()) +
+                           "   records " +
+                           std::to_string(app.dht->stored_records())) |
+                      dim);
+    } else {
+        all.push_back(text("  dht disabled") | dim);
+    }
+    all.push_back(text("  combat events " +
+                       std::to_string(app.danger_events.size()) +
+                       " stored") |
+                  dim);
+    all.push_back(text("  data dir " + app.data_dir) | dim);
+    {
+        std::lock_guard lk(app.update_mu);
+        if (app.update_running)
+            all.push_back(text("  update: in progress") |
+                          color(Color::Yellow));
+        else if (!app.latest_release.tag.empty())
+            all.push_back(text("  update available: " +
+                               app.latest_release.tag +
+                               " — /update") |
+                          color(Color::Yellow));
+        else
+            all.push_back(text("  update: up to date") | dim);
+    }
+    all.push_back(text("") | dim);
+    all.push_back(text(" Tab: switch view · /help for commands") | dim);
+
+    return pane_window(all, scroll, total_out);
+}
+
+// ------------------------------------------------------------------
+// Settings tab: read-only view of the effective configuration.
+// ------------------------------------------------------------------
+Element render_settings_view(const ChatApp& app, int scroll,
+                             int& total_out) {
+    std::vector<Element> all;
+    auto line = [&all](const std::string& s) {
+        all.push_back(text(s) | dim);
+    };
+    auto head = [&all](const std::string& s) {
+        all.push_back(text(s) | bold | color(Color::Yellow));
+    };
+
+    head(" CONFIG ");
+    line("config file: " + app.data_dir + "/config.ini");
+    line("name=" + app.config.name + "   port=" +
+         std::to_string(app.config.port) + "   dht_port=" +
+         std::to_string(app.config.dht_port));
+    line("data dir: " + app.data_dir);
+    line("bootstraps: " + std::to_string(app.config.bootstraps.size()));
+    for (auto& b : app.config.bootstraps) line("  " + b);
+
+    head(" IDENTITY ");
+    line("peer id: " + peer_id_hex(app.identity));
+    line("fingerprint: " +
+         crypto::to_hex(app.identity.x25519.pub.data(), 16));
+
+    head(" AI (danger assessment) ");
+    line("endpoint: " + (app.config.ai_base.empty()
+                             ? std::string("(default: Pollinations)")
+                             : app.config.ai_base));
+    line("model: " + (app.config.ai_model.empty()
+                          ? std::string("(default)")
+                          : app.config.ai_model));
+    line("api key: " + (app.config.ai_key.empty()
+                            ? std::string("not set")
+                            : std::string("set (hidden)")));
+
+    head(" LOCATION ");
+    {
+        std::lock_guard lk(app.geo_mu);
+        if (!app.geo_done) {
+            line("status: resolving...");
+        } else if (!app.geo.ok) {
+            line("status: unavailable");
+        } else {
+            line(std::string("status: ok (") +
+                 (app.geo.precise ? "device GPS" : "IP geolocation") +
+                 ")");
+            if (app.geo.lat != 0 || app.geo.lon != 0) {
+                char buf[96];
+                std::snprintf(buf, sizeof(buf), "coords: %.5f, %.5f",
+                              app.geo.lat, app.geo.lon);
+                line(buf);
+            }
+            std::string place;
+            if (!app.geo.city.empty()) place = app.geo.city;
+            if (!app.geo.region.empty() &&
+                to_lower(app.geo.region) != to_lower(app.geo.city)) {
+                if (!place.empty()) place += ", ";
+                place += app.geo.region;
+            }
+            if (!app.geo.country.empty()) {
+                if (!place.empty()) place += ", ";
+                place += app.geo.country;
+            }
+            if (!place.empty()) line("place: " + place);
+            if (!app.geo.ip.empty())
+                line("public ip: " + app.geo.ip +
+                     (app.geo.isp.empty() ? "" : "  (" + app.geo.isp + ")"));
+        }
+    }
+
+    head(" APP ");
+    line("version " APP_VERSION "   combat events stored: " +
+         std::to_string(app.danger_events.size()));
+    {
+        std::lock_guard lk(app.update_mu);
+        if (app.update_running)
+            line("update: in progress");
+        else if (!app.latest_release.tag.empty())
+            line("update available: " + app.latest_release.tag);
+        else
+            line("update: up to date");
+    }
+    all.push_back(text("") | dim);
+    line("Edit config.ini and restart to apply changes.");
+    line("Slash commands still work from any tab: /add /chat "
+         "/event /danger /invite ...");
+
+    return pane_window(all, scroll, total_out);
 }
 
 }  // namespace
@@ -968,6 +1678,8 @@ int main(int argc, char** argv) {
     if (!app.db.last_error().empty())
         std::cerr << "database warning: " << app.db.last_error() << "\n";
     reload_friends(app);
+    app.danger_events =
+        dedup_events(load_events(data_dir + "/danger.txt"));
 
     // ---- decentralized layer: Kademlia DHT -------------------------
     std::vector<Endpoint> boot_eps;
@@ -1029,7 +1741,100 @@ int main(int argc, char** argv) {
             [&screen] { screen.PostEvent(Event::Custom); });
     }).detach();
 
+    // ---- geolocation ------------------------------------------------
+    // Precise device fix (CoreLocation on macOS) + IP geolocation.
+    // Slow (GPS acquisition + HTTPS), so it runs in the background and
+    // reports through the console once done.
+    std::thread([&app, &screen]() {
+        GeoInfo g = fetch_geo_info();
+        if (g.ip.empty() && app.dht) {
+            // ipwho.is did not report the client IP — fall back to the
+            // public endpoint observed through the DHT.
+            if (auto obs = app.dht->observed_public_endpoint())
+                g.ip = obs->addr;
+        }
+        {
+            std::lock_guard lk(app.geo_mu);
+            app.geo = g;
+            app.geo_done = true;
+        }
+        auto post = [&](const std::string& m) {
+            post_notice(app, m,
+                        [&screen] { screen.PostEvent(Event::Custom); });
+        };
+        if (!g.ok) {
+            post("location: unavailable (geo lookup failed)");
+            return;
+        }
+        if (g.precise) {
+            char coords[64];
+            std::snprintf(coords, sizeof(coords), "%.5f, %.5f",
+                          g.lat, g.lon);
+            std::string line = "location (device): " +
+                               std::string(coords);
+            if (g.accuracy_m >= 0)
+                line += " ±" + std::to_string(
+                            static_cast<int>(g.accuracy_m)) +
+                        " m";
+            post(line);
+        }
+        std::string place;
+        auto add = [&place](const std::string& s) {
+            if (s.empty()) return;
+            if (!place.empty()) place += ", ";
+            place += s;
+        };
+        add(g.city);
+        // ipwho.is repeats the city name in "region" for municipalities.
+        if (!g.region.empty() && to_lower(g.region) != to_lower(g.city))
+            add(g.region);
+        add(g.country);
+        if (!place.empty())
+            post("location (approx): " + place +
+                 (g.precise ? " (from IP)" : ""));
+        if (!g.ip.empty())
+            post("public ip: " + g.ip +
+                 (g.isp.empty() ? "" : "  (" + g.isp + ")"));
+        if (!g.local_ips.empty()) {
+            std::string ips;
+            for (auto& a : g.local_ips) {
+                if (!ips.empty()) ips += ", ";
+                ips += a;
+            }
+            post("local ip: " + ips);
+        }
+        if (g.precise && place.empty() && g.ip.empty())
+            post("location: device fix only, no IP info");
+
+        // Civilian danger assessment for the resolved position.
+        auto a = assess_now(app);
+        if (a.computed) {
+            post("danger level: L" + std::to_string(a.level) + " (" +
+                     level_name(a.level) + "), index " +
+                     std::to_string(a.index) + "/100 — /danger for "
+                     "details");
+        } else {
+            post("danger: position unknown, cannot assess");
+        }
+    }).detach();
+
+    // Wake the UI once a minute: drives the AI danger refresh and
+    // keeps the "updated Xs ago" labels current.
+    std::atomic<bool> ui_running{true};
+    std::thread([&screen, &ui_running] {
+        while (ui_running) {
+            std::this_thread::sleep_for(std::chrono::minutes(1));
+            if (ui_running) screen.PostEvent(Event::Custom);
+        }
+    }).detach();
+
     // ---- components -------------------------------------------------
+    // Tabs: 0 = Main (danger + system), 1 = Logs, 2 = Chats,
+    // 3 = Settings. Tab / Shift-Tab switches.
+    int tab = 0;
+    int main_scroll = 0, friends_scroll = 0, settings_scroll = 0;
+    int main_rows = 0, friends_rows = 0, settings_rows = 0;
+
     std::string input_text;
     std::string input_hint;
     auto handle_input = [&app, &screen, &input_text, &input_hint]() {
@@ -1072,71 +1877,203 @@ int main(int argc, char** argv) {
         screen.PostEvent(Event::Custom);
     };
     auto input = Input(input_opt);
-
-    auto friends_view = Renderer([&app] { return render_friends(app); });
-    auto main_view = Renderer([&app] {
-        if (app.mode == ChatApp::Mode::Chat) {
-            FriendView* fv = app.find_by_id(app.open_friend_id);
-            std::string title = fv ? fv->display_name : "chat";
-            std::string state = (fv && fv->online) ? "online" : "offline";
-            auto title_el = hbox(
-                {text(" Chat: " + title + " [" + state + "]  ") |
-                     bold | color(Color::Magenta),
-                 text("/close to exit") | color(Color::GrayDark)});
-            static FriendView empty;
-            return vbox({title_el, separator(),
-                         render_chat_lines(fv ? *fv : empty) | flex});
-        }
-        return vbox({render_console(app) | flex});
+    input |= Renderer([&](Element inner) {
+        return hbox({
+            text(" ❯ ") | bold | color(Color::Cyan),
+            inner | flex,
+        });
     });
 
-    auto sep = [] { return Renderer([] { return separator(); }); };
+    auto friends_view = Renderer([&] {
+        return window(text(" Contacts ") | bold | color(Color::Yellow),
+                      render_friends(app, friends_scroll, friends_rows),
+                      ROUNDED) |
+               flex;
+    });
+    auto chat_pane = Renderer([&] {
+        FriendView* fv = app.find_by_id(app.open_friend_id);
+        if (app.mode == ChatApp::Mode::Chat && fv) {
+            bool online = fv->online;
+            auto title_el = hbox({
+                text(" " + fv->display_name + " ") | bold |
+                    color(online ? Color::Green : Color::Magenta),
+                text(" " + std::string(online ? "online" : "offline") +
+                     " ") |
+                    color(Color::GrayDark),
+            });
+            return window(title_el, render_chat_lines(*fv), ROUNDED) |
+                   flex;
+        }
+        return window(text(" Chat ") | bold | color(Color::Cyan),
+                      vbox({filler(),
+                            text("no chat open — /chat <name>") | dim,
+                            text("contacts are on the left") | dim,
+                            filler()}) |
+                          flex | borderEmpty,
+                      ROUNDED) |
+               flex;
+    });
+    auto chats_view =
+        Container::Horizontal({friends_view | size(WIDTH, EQUAL, 34),
+                               chat_pane | flex});
+
+    auto tab_main = Renderer([&] {
+        return window(text(" Main ") | bold | color(Color::Yellow),
+                      render_main_view(app, main_scroll, main_rows),
+                      ROUNDED) |
+               flex;
+    });
+    auto tab_logs = Renderer([&] {
+        return window(text(" Logs ") | bold | color(Color::Cyan),
+                      render_console(app), ROUNDED) |
+               flex;
+    });
+    auto tab_settings = Renderer([&] {
+        return window(text(" Settings ") | bold | color(Color::Yellow),
+                      render_settings_view(app, settings_scroll,
+                                           settings_rows),
+                      ROUNDED) |
+               flex;
+    });
+    auto content = Container::Tab(
+        {tab_main, tab_logs, chats_view, tab_settings}, &tab);
+
+    auto tab_bar = Renderer([&tab] {
+        static const char* names[] = {" Main ", " Logs ", " Chats ",
+                                      " Settings "};
+        std::vector<Element> els;
+        for (int i = 0; i < 4; ++i) {
+            if (i > 0)
+                els.push_back(text(" │ ") | color(Color::GrayDark));
+            bool on = i == tab;
+            els.push_back(text(names[i]) |
+                          (on ? bold | color(Color::Black) |
+                                     bgcolor(Color::Cyan)
+                              : color(Color::GrayDark)));
+        }
+        return hbox(std::move(els));
+    });
+
+    auto sep = [] {
+        return Renderer([] { return separator() | color(Color::GrayDark); });
+    };
 
     auto header = Renderer([&app] {
         std::string fp = crypto::to_hex(app.identity.x25519.pub.data(), 8);
+        std::string net_info;
+        {
+            std::lock_guard lk(app.geo_mu);
+            if (app.geo_done) {
+                if (!app.geo.ip.empty()) net_info += "ip:" + app.geo.ip;
+                std::string loc;
+                if (!app.geo.city.empty()) {
+                    loc = app.geo.city;
+                    if (!app.geo.country.empty())
+                        loc += "," + app.geo.country;
+                } else if (app.geo.lat != 0 || app.geo.lon != 0) {
+                    char coords[48];
+                    std::snprintf(coords, sizeof(coords), "%.4f,%.4f",
+                                  app.geo.lat, app.geo.lon);
+                    loc = coords;
+                }
+                if (!loc.empty()) {
+                    if (!net_info.empty()) net_info += "  ";
+                    net_info += "loc:" + loc +
+                                (app.geo.precise ? "*" : "");
+                }
+            }
+        }
+        // Civilian danger badge (L1 critical .. L5 none detected).
+        // Prefers the AI verdict when one is available.
+        ChatApp::AiDanger ai;
+        {
+            std::lock_guard lk(app.ai_mu);
+            ai = app.ai_danger;
+        }
+        auto da = assess_now(app);
+        int lvl = ai.have_verdict ? ai.level
+                                  : (da.computed ? da.level : 0);
+        Element badge = text("");
+        if (lvl > 0) {
+            Color lc = level_color(lvl);
+            badge = hbox({
+                text(" L" + std::to_string(lvl)) | bold | color(lc),
+                ai.have_verdict ? text(" ai") | dim : text(""),
+            });
+        }
         return hbox({
-            text(" P2P Secure Chat v" APP_VERSION " ") | bold |
-                color(Color::Cyan),
-            text("  me: " + app.config.name + "  fp:" + fp +
-                 "  listen:" + std::to_string(app.config.port) +
-                 "  [NoiseXX+DR+SQLCipher]") |
+            text(" P2P Secure Chat") | bold | color(Color::Cyan),
+            text(" v" APP_VERSION) | dim,
+            badge,
+            filler(),
+            text("me:" + app.config.name + "  fp:" + fp +
+                 "  tcp:" + std::to_string(app.config.port) +
+                 "  udp:" + std::to_string(app.config.dht_port) +
+                 (net_info.empty() ? "" : "  " + net_info)) |
                 color(Color::GrayDark),
         });
     });
 
     auto status_line = Renderer([&app, &input_hint] {
         std::string s = input_hint;
+        Color c = Color::Yellow;
         if (s.empty()) s = app.notice;
         if (s.empty()) {
             s = app.mode == ChatApp::Mode::Chat
-                    ? "Enter: send | /close: back"
-                    : "/help for commands";
+                    ? "Enter: send | /close: back | Tab: switch view"
+                    : "Tab: switch view | /help for commands | "
+                      "PgUp/PgDn/wheel: scroll";
+            c = Color::GrayDark;
         }
-        return text(" " + s) | color(Color::Yellow);
+        return text(" " + s) | color(c);
     });
 
-    auto body = Container::Horizontal({friends_view | size(WIDTH, EQUAL, 36),
-                                       main_view | flex});
-    auto root =
-        Container::Vertical({header, sep(), body | flex, input, status_line});
+    auto root = Container::Vertical(
+        {header, sep(), tab_bar, content | flex, input, status_line});
 
-    auto scroll_by = [&app, &screen](int delta) {
-        if (app.mode == ChatApp::Mode::Chat) {
-            if (auto* fv = app.find_by_id(app.open_friend_id)) {
-                int mx = max_scroll(fv->lines.size());
-                fv->chat_scroll =
-                    std::clamp(fv->chat_scroll + delta, 0, mx);
+    auto scroll_by = [&app, &screen, &tab, &main_scroll, &friends_scroll,
+                      &settings_scroll, &main_rows, &friends_rows,
+                      &settings_rows](int delta) {
+        int mx = 0;
+        int* target = nullptr;
+        if (tab == 0) {
+            mx = max_scroll(main_rows);
+            target = &main_scroll;
+        } else if (tab == 1) {
+            mx = max_scroll(app.console.size());
+            target = &app.console_scroll;
+        } else if (tab == 2) {
+            if (app.mode == ChatApp::Mode::Chat) {
+                if (auto* fv = app.find_by_id(app.open_friend_id)) {
+                    mx = max_scroll(fv->lines.size());
+                    target = &fv->chat_scroll;
+                }
+            }
+            if (!target) {
+                mx = max_scroll(friends_rows);
+                target = &friends_scroll;
             }
         } else {
-            int mx = max_scroll(app.console.size());
-            app.console_scroll =
-                std::clamp(app.console_scroll + delta, 0, mx);
+            mx = max_scroll(settings_rows);
+            target = &settings_scroll;
         }
+        if (target) *target = std::clamp(*target + delta, 0, mx);
         screen.PostEvent(Event::Custom);
     };
 
     auto global = CatchEvent(root, [&](Event event) {
         drain_inbox(app);
+        // Periodic AI danger refresh (self-throttled to 60 s).
+        kick_ai_danger(app, false,
+                       [&screen] { screen.PostEvent(Event::Custom); });
+        if (event == Event::Tab) {
+            tab = (tab + 1) % 4;
+            return true;
+        }
+        if (event == Event::TabReverse) {
+            tab = (tab + 3) % 4;
+            return true;
+        }
         if (event == Event::PageUp) {
             scroll_by(pane_rows());
             return true;
@@ -1167,6 +2104,7 @@ int main(int argc, char** argv) {
     });
 
     screen.Loop(global);
+    ui_running = false;
     app.net->stop();
     if (app.dht) app.dht->stop();
     return 0;

@@ -7,6 +7,11 @@ project(p2p VERSION 0.4.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# geo_macos.mm (CoreLocation) needs the Objective-C++ compiler.
+if(APPLE)
+    enable_language(OBJCXX)
+endif()
+
 # Dependencies:
 #   macOS (Homebrew): brew install asio libsodium sqlcipher ftxui
 #   Windows (vcpkg):  vcpkg install asio libsodium sqlcipher ftxui
@@ -70,11 +75,14 @@ else()
 endif()
 
 add_executable(p2p
+    src/ai.cpp
     src/main.cpp
     src/crypto.cpp
+    src/danger.cpp
     src/db.cpp
     src/dht.cpp
     src/endpoint.cpp
+    src/geo.cpp
     src/invite.cpp
     src/net.cpp
     src/selftest.cpp
@@ -122,4 +130,29 @@ target_link_libraries(p2p PRIVATE
 # Static sqlcipher (vcpkg) needs OpenSSL symbols at link time.
 if(OpenSSL_FOUND)
     target_link_libraries(p2p PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+endif()
+
+if(APPLE)
+    target_sources(p2p PRIVATE src/geo_macos.mm)
+    find_library(CORELOCATION_LIB CoreLocation)
+    find_library(COREFOUNDATION_LIB CoreFoundation)
+    find_library(FOUNDATION_LIB Foundation)
+    target_link_libraries(p2p PRIVATE
+        ${CORELOCATION_LIB} ${COREFOUNDATION_LIB} ${FOUNDATION_LIB})
+endif()
+
+if(WIN32)
+    target_sources(p2p PRIVATE src/geo_windows.cpp)
+    # WinRT activation (RoGetActivationFactory, WindowsCreateString).
+    target_link_libraries(p2p PRIVATE windowsapp combase)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # GeoClue2 over the system D-Bus (GNOME/KDE location service).
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(DBUS1 REQUIRED dbus-1)
+    target_sources(p2p PRIVATE src/geo_linux.cpp)
+    target_include_directories(p2p PRIVATE ${DBUS1_INCLUDE_DIRS})
+    target_link_libraries(p2p PRIVATE ${DBUS1_LIBRARIES})
+    target_compile_definitions(p2p PRIVATE ${DBUS1_CFLAGS_OTHER})
 endif()

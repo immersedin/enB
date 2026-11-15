@@ -46,6 +46,8 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <string>11.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>P2P Secure Chat uses your location to show where you are in the app.</string>
 </dict>
 </plist>
 EOF

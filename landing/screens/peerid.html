@@ -1,0 +1,41 @@
+<pre class="scr" role="img" aria-label="p2p console showing the peer id and DHT endpoint">
+<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-cyan k-b"> Console </span><span class="k-b">─────────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│ </span><span class="k-gray k-b">○ </span><span class="k-white k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ commands:                                                                        │</span>
+<span class="k-b">│                                  ││   /friends              list friends                                             │</span>
+<span class="k-b">│                                  ││   /add &lt;name&gt; &lt;host&gt; &lt;port&gt;   add friend &amp; connect                               │</span>
+<span class="k-b">│                                  ││   /remove &lt;name&gt;        remove friend                                            │</span>
+<span class="k-b">│                                  ││   /chat &lt;name&gt;          open chat (auto-connects)                                │</span>
+<span class="k-b">│                                  ││   /connect &lt;arg&gt; [name]  connect by invite code,                                 │</span>
+<span class="k-b">│                                  ││                        peer id, friend name or a                                 │</span>
+<span class="k-b">│                                  ││                        file holding the code; optional                           │</span>
+<span class="k-b">│                                  ││                        [name] renames a new peer                                 │</span>
+<span class="k-b">│                                  ││   /invite [ttl] [save &lt;file&gt;]  create invitation                                 │</span>
+<span class="k-b">│                                  ││                        (code is copied to clipboard)                             │</span>
+<span class="k-b">│                                  ││   /peerid               show &amp; copy this peer's id                               │</span>
+<span class="k-b">│                                  ││   /copyid &lt;name&gt;        copy friend's peer id                                    │</span>
+<span class="k-b">│                                  ││   /dht                  DHT status                                               │</span>
+<span class="k-b">│                                  ││   /bootstrap &lt;host:port&gt;  add DHT bootstrap node                                 │</span>
+<span class="k-b">│                                  ││   /close                back to console                                          │</span>
+<span class="k-b">│                                  ││   /update               check GitHub for updates &amp; install                       │</span>
+<span class="k-b">│                                  ││   /version              show version info                                        │</span>
+<span class="k-b">│                                  ││   /quit                 exit                                                     │</span>
+<span class="k-b">│                                  ││ any other text is sent to the open chat                                          │</span>
+<span class="k-b">│                                  ││ PgUp/PgDn, arrows, wheel: scroll console/chat                                    │</span>
+<span class="k-b">│                                  ││   ( ) bob  127.0.0.1:5556                                                        │</span>
+<span class="k-b">│                                  ││ dht nodes known: 0                                                               │</span>
+<span class="k-b">│                                  ││ records stored:  1                                                               │</span>
+<span class="k-b">│                                  ││ no public endpoint observed yet (behind NAT or no DHT contact)                   │</span>
+<span class="k-b">│                                  ││ peer id: f6ee0e177476788c20210f0f5aa446fc28a90d38df219405fb83ab8f036a835b        │</span>
+<span class="k-b">│                                  ││ short:   f6ee0e177476788c                                                        │</span>
+<span class="k-b">│                                  ││ peer id copied to clipboard                                                      │</span>
+<span class="k-b">│                                  ││ dht:     [::]:5555 (UDP)                                                         │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
+<span class="k-gray k-b">/help for commands | PgUp/PgDn/wheel: scroll</span>
+</pre>

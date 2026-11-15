@@ -1,0 +1,25 @@
+[
+ {
+  "shape": "Split Studio",
+  "theme": "Vantage (by request)",
+  "axes": "dark/grotesk-sans/chromatic-lime",
+  "hero": "Settled",
+  "nav": "slab",
+  "footer": "mast",
+  "imagery": "the product, captured live",
+  "photos": [],
+  "entry": "try",
+  "fingerprint": "point cloud of the network behind a real E2EE session",
+  "sections": [
+   "protocol table",
+   "command index",
+   "platform rows",
+   "close band"
+  ],
+  "signature": "swept point cloud behind captured TUI",
+  "waived": [],
+  "prompt": "create landing for my project, use vantage theme",
+  "date": "2026-11-15",
+  "mode": "build"
+ }
+]

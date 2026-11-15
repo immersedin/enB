@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>p2p: end-to-end encrypted chat for terminals</title>
+<meta name="description" content="p2p is a decentralized, end-to-end encrypted chat client for the terminal. No servers, no accounts: Noise XX, Double Ratchet and a Kademlia DHT between two peers.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Geologica:wght,CRSV,SHRP@200..500,0,0..100&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="./page.css">
+<script>document.documentElement.classList.add('js');</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="container nav__in">
+    <a class="wordmark" href="#top" aria-label="p2p, back to top">p2p<small>secure chat</small></a>
+    <nav class="nav__links" aria-label="Sections">
+      <a href="#protocol">Protocol</a>
+      <a href="#commands">Commands</a>
+      <a href="#platforms">Platforms</a>
+      <a class="btn btn--line" href="https://github.com/immersedin/enB" rel="noopener">GitHub</a>
+      <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ hero: Settled ============ -->
+  <section class="hero" id="top">
+    <div class="container hero__grid">
+      <div class="hero__copy" data-reveal>
+        <h1>Chat that needs no server.</h1>
+        <p class="lead">End-to-end encrypted messages between two terminals, with nothing in between.</p>
+        <div class="actions">
+          <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download p2p</a>
+          <a class="btn btn--line" href="https://github.com/immersedin/enB" rel="noopener">View source</a>
+        </div>
+      </div>
+      <div class="hero__vis" data-reveal style="--i:1">
+        <canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
+        <figure class="shot ticks" data-slot="chat" data-kind="product" data-alt="The p2p chat window in a live session between alice and bob">
+          <pre class="scr" role="img" aria-label="p2p chat window: bob online, two messages exchanged">
+<span class="k-cyan k-b"> P2P Secure Chat</span><span class="k-b"> v0.4.1                                                </span><span class="k-gray k-b">me:alice  fp:91908ef255cdd2f2  tcp:5555  udp:5555</span>
+<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-green k-b"> bob </span><span class="k-gray k-b"> online </span><span class="k-b">─────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│ </span><span class="k-green k-b">● </span><span class="k-cyan k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ </span><span class="k-green k-b">you: </span><span class="k-b">hey bob, this is E2EE                                                       │</span>
+<span class="k-b">│                                  ││ </span><span class="k-cyan k-b">bob: </span><span class="k-b">hi alice, loud and clear                                                    │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
+<span class="k-gray k-b"> Enter: send | /close: back | PgUp/PgDn: scroll</span>
+</pre>        </figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ protocol: table ============ -->
+  <section class="section" id="protocol">
+    <div class="container grid-12">
+      <div class="head-block" data-reveal>
+        <h2>What a handshake proves</h2>
+        <p class="lead">Four layers, one job each. No server.</p>
+      </div>
+      <div class="body-block--full" data-reveal style="--i:1">
+        <table class="ptable">
+          <thead>
+            <tr><th>Step</th><th>Moves</th><th>Proves</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="step">/invite</td>
+              <td class="what">Signed blob, timed.</td>
+              <td class="proves">Id authentic while it lives.</td>
+            </tr>
+            <tr>
+              <td class="step">DHT</td>
+              <td class="what">Owner-signed Kademlia records.</td>
+              <td class="proves">Address, no directory.</td>
+            </tr>
+            <tr>
+              <td class="step">Noise XX</td>
+              <td class="what">X25519+ChaChaPoly handshake.</td>
+              <td class="proves">Both ends prove keys.</td>
+            </tr>
+            <tr>
+              <td class="step">Double Ratchet</td>
+              <td class="what">Fresh X25519 DH per message.</td>
+              <td class="proves">Forward secrecy.</td>
+            </tr>
+            <tr>
+              <td class="step">SQLCipher</td>
+              <td class="what">Encrypted SQLite.</td>
+              <td class="proves">Nothing readable on disk.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ commands: split ============ -->
+  <section class="section section--tight" id="commands">
+    <div class="container grid-12 split">
+      <div class="head-block" data-reveal>
+        <h2>The interface is a prompt</h2>
+        <p class="lead">One line; commands do the rest.</p>
+      </div>
+      <div class="body-block" data-reveal style="--i:1">
+        <div class="cmds">
+          <div class="cmd"><code>/invite [ttl]</code><p>Signs an invite.</p></div>
+          <div class="cmd"><code>/connect &lt;code|id|file&gt;</code><p>Resolves, verifies, connects.</p></div>
+          <div class="cmd"><code>/chat &lt;name&gt;</code><p>Opens a chat.</p></div>
+          <div class="cmd"><code>/peerid</code><p>Copies your id.</p></div>
+          <div class="cmd"><code>/copyid &lt;name&gt;</code><p>Copies a contact id.</p></div>
+          <div class="cmd"><code>/dht</code><p>Nodes, records, endpoint.</p></div>
+          <div class="cmd"><code>/bootstrap &lt;host:port&gt;</code><p>Adds a DHT node.</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="container" style="margin-top: var(--space-2xl);">
+      <figure class="shot ticks" data-slot="help" data-kind="product" data-alt="The p2p console listing every slash command" data-reveal>
+        <pre class="scr" role="img" aria-label="p2p console showing the slash command list">
+<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-cyan k-b"> Console </span><span class="k-b">─────────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│ </span><span class="k-gray k-b">○ </span><span class="k-white k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ commands:                                                                        │</span>
+<span class="k-b">│                                  ││   /friends              list friends                                             │</span>
+<span class="k-b">│                                  ││   /add &lt;name&gt; &lt;host&gt; &lt;port&gt;   add friend &amp; connect                               │</span>
+<span class="k-b">│                                  ││   /remove &lt;name&gt;        remove friend                                            │</span>
+<span class="k-b">│                                  ││   /chat &lt;name&gt;          open chat (auto-connects)                                │</span>
+<span class="k-b">│                                  ││   /connect &lt;arg&gt; [name]  connect by invite code,                                 │</span>
+<span class="k-b">│                                  ││                        peer id, friend name or a                                 │</span>
+<span class="k-b">│                                  ││                        file holding the code; optional                           │</span>
+<span class="k-b">│                                  ││                        [name] renames a new peer                                 │</span>
+<span class="k-b">│                                  ││   /invite [ttl] [save &lt;file&gt;]  create invitation                                 │</span>
+<span class="k-b">│                                  ││                        (code is copied to clipboard)                             │</span>
+<span class="k-b">│                                  ││   /peerid               show &amp; copy this peer's id                               │</span>
+<span class="k-b">│                                  ││   /copyid &lt;name&gt;        copy friend's peer id                                    │</span>
+<span class="k-b">│                                  ││   /dht                  DHT status                                               │</span>
+<span class="k-b">│                                  ││   /bootstrap &lt;host:port&gt;  add DHT bootstrap node                                 │</span>
+<span class="k-b">│                                  ││   /close                back to console                                          │</span>
+<span class="k-b">│                                  ││   /update               check GitHub for updates &amp; install                       │</span>
+<span class="k-b">│                                  ││   /version              show version info                                        │</span>
+<span class="k-b">│                                  ││   /quit                 exit                                                     │</span>
+<span class="k-b">│                                  ││ any other text is sent to the open chat                                          │</span>
+<span class="k-b">│                                  ││ PgUp/PgDn, arrows, wheel: scroll console/chat                                    │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
+<span class="k-gray k-b">/help for commands | PgUp/PgDn/wheel: scroll</span>
+</pre>      </figure>
+    </div>
+  </section>
+
+  <!-- ============ platforms: rows ============ -->
+  <section class="section" id="platforms">
+    <div class="container">
+      <div class="head-block" data-reveal style="max-width: 60ch;">
+        <h2>Runs where C++ runs</h2>
+        <p class="lead">Prebuilt binaries for macOS and Windows, or compile it yourself.</p>
+      </div>
+      <div style="margin-top: var(--space-2xl);" data-reveal>
+        <div class="plats">
+          <div class="plat">
+            <div class="plat__name">macOS, Apple silicon</div>
+            <div class="plat__artifact">p2p-macos-arm64.zip</div>
+            <div class="plat__need">Prebuilt release asset.</div>
+          </div>
+          <div class="plat">
+            <div class="plat__name">macOS, Intel</div>
+            <div class="plat__artifact">p2p-macos-x86_64.zip</div>
+            <div class="plat__need">Prebuilt release asset.</div>
+          </div>
+          <div class="plat">
+            <div class="plat__name">Windows x64</div>
+            <div class="plat__artifact">p2p-windows-x64.zip</div>
+            <div class="plat__need">Prebuilt release asset.</div>
+          </div>
+          <div class="plat">
+            <div class="plat__name">Anywhere else</div>
+            <div class="plat__artifact">cmake -B build &amp;&amp; cmake --build build</div>
+            <div class="plat__need">asio, libsodium, sqlcipher, ftxui. brew or vcpkg.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ close: band ============ -->
+  <section class="band">
+    <div class="container grid-12 close">
+      <div class="head-block" data-reveal>
+        <h2>Take it peer to peer.</h2>
+        <p class="lead">One binary, one port, two keys. First contact is an invite code.</p>
+        <div class="actions">
+          <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download p2p</a>
+          <a class="btn btn--line" href="https://github.com/immersedin/enB" rel="noopener">Source on GitHub</a>
+        </div>
+      </div>
+      <div class="body-block" data-reveal style="--i:1">
+        <figure class="shot ticks" data-slot="peerid" data-kind="product" data-alt="The p2p console showing a peer id and DHT endpoint">
+          <pre class="scr" role="img" aria-label="p2p console showing the peer id and DHT endpoint">
+<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-cyan k-b"> Console </span><span class="k-b">─────────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│ </span><span class="k-gray k-b">○ </span><span class="k-white k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ commands:                                                                        │</span>
+<span class="k-b">│                                  ││   /friends              list friends                                             │</span>
+<span class="k-b">│                                  ││   /add &lt;name&gt; &lt;host&gt; &lt;port&gt;   add friend &amp; connect                               │</span>
+<span class="k-b">│                                  ││   /remove &lt;name&gt;        remove friend                                            │</span>
+<span class="k-b">│                                  ││   /chat &lt;name&gt;          open chat (auto-connects)                                │</span>
+<span class="k-b">│                                  ││   /connect &lt;arg&gt; [name]  connect by invite code,                                 │</span>
+<span class="k-b">│                                  ││                        peer id, friend name or a                                 │</span>
+<span class="k-b">│                                  ││                        file holding the code; optional                           │</span>
+<span class="k-b">│                                  ││                        [name] renames a new peer                                 │</span>
+<span class="k-b">│                                  ││   /invite [ttl] [save &lt;file&gt;]  create invitation                                 │</span>
+<span class="k-b">│                                  ││                        (code is copied to clipboard)                             │</span>
+<span class="k-b">│                                  ││   /peerid               show &amp; copy this peer's id                               │</span>
+<span class="k-b">│                                  ││   /copyid &lt;name&gt;        copy friend's peer id                                    │</span>
+<span class="k-b">│                                  ││   /dht                  DHT status                                               │</span>
+<span class="k-b">│                                  ││   /bootstrap &lt;host:port&gt;  add DHT bootstrap node                                 │</span>
+<span class="k-b">│                                  ││   /close                back to console                                          │</span>
+<span class="k-b">│                                  ││   /update               check GitHub for updates &amp; install                       │</span>
+<span class="k-b">│                                  ││   /version              show version info                                        │</span>
+<span class="k-b">│                                  ││   /quit                 exit                                                     │</span>
+<span class="k-b">│                                  ││ any other text is sent to the open chat                                          │</span>
+<span class="k-b">│                                  ││ PgUp/PgDn, arrows, wheel: scroll console/chat                                    │</span>
+<span class="k-b">│                                  ││   ( ) bob  127.0.0.1:5556                                                        │</span>
+<span class="k-b">│                                  ││ dht nodes known: 0                                                               │</span>
+<span class="k-b">│                                  ││ records stored:  1                                                               │</span>
+<span class="k-b">│                                  ││ no public endpoint observed yet (behind NAT or no DHT contact)                   │</span>
+<span class="k-b">│                                  ││ peer id: f6ee0e177476788c20210f0f5aa446fc28a90d38df219405fb83ab8f036a835b        │</span>
+<span class="k-b">│                                  ││ short:   f6ee0e177476788c                                                        │</span>
+<span class="k-b">│                                  ││ peer id copied to clipboard                                                      │</span>
+<span class="k-b">│                                  ││ dht:     [::]:5555 (UDP)                                                         │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">│                                  ││                                                                                  │</span>
+<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+<span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
+<span class="k-gray k-b">/help for commands | PgUp/PgDn/wheel: scroll</span>
+</pre>        </figure>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="container">
+    <p class="mast">p2p</p>
+    <div class="foot-links">
+      <a href="https://github.com/immersedin/enB" rel="noopener">GitHub</a>
+      <a href="https://github.com/immersedin/enB/releases" rel="noopener">Releases</a>
+      <a href="#protocol">Protocol</a>
+      <a href="#commands">Commands</a>
+      <a href="#platforms">Platforms</a>
+    </div>
+    <p class="foot-note">P2P Secure Chat. Noise XX, Double Ratchet, Kademlia DHT, SQLCipher. Screens captured from a live session on loopback.</p>
+  </div>
+</footer>
+
+<script src="./cloud.js" defer></script>
+<script>
+window.hallmarkSlots = (m) => { for (const [k, v] of Object.entries(m)) { const s = document.querySelector(`[data-slot="${k}"]`); if (!s) continue; const im = new Image(); im.src = typeof v === 'string' ? v : v.src; im.alt = (typeof v === 'object' && v.alt) || s.dataset.alt || ''; s.querySelectorAll(':scope > img').forEach((o) => o.remove()); s.prepend(im); } };
+document.querySelectorAll('[data-slot] img').forEach((i) => { if (i.complete && !i.naturalWidth) i.remove(); else i.addEventListener('error', () => i.remove(), { once: true }); });
+
+const io = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('is-in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -10% 0px' });
+document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+</script>
+</body>
+</html>

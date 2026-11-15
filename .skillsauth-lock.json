@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "generatedAt": "2026-11-15T06:05:03.655Z",
+  "skills": {
+    "armandli-fxtui-guide-cpp": {
+      "slug": "armandli-fxtui-guide-cpp",
+      "name": "skills/fxtui-guide-cpp",
+      "repoOwner": "armandli",
+      "repoName": "get-skilled",
+      "version": "1.0.0",
+      "sha": "256e62b86817f723d7ef4b932396148a24d64aa2",
+      "description": "---\nname: fxtui-guide-cpp\ndescription: Expert reference guide for the FTXUI (also written FXTUI) C++ terminal UI framework. Auto-activates when developing terminal user interfaces in C++ using FTXUI, writing TUI components, creating interactive CLI apps, or when user asks about FTXUI elements, components, layout, colors, canvas, tables, animation, screens, gauges, spinners, menus, inputs, buttons, checkboxes, or event handling. Use when: adding FTXUI to a C++ project, building terminal dashboard",
+      "installedAt": "2026-11-15T06:05:03.655Z",
+      "updatedAt": "2026-11-15T06:05:03.655Z",
+      "agents": [
+        "windsurf"
+      ],
+      "scope": "local",
+      "paths": {
+        "windsurf": ".windsurf/skills/armandli-fxtui-guide-cpp/SKILL.md"
+      }
+    }
+  }
+}
