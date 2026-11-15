@@ -18,6 +18,12 @@
   --scr-green: var(--color-accent);
   --scr-gray: var(--color-muted);
   --scr-white: var(--color-ink);
+  /* danger levels, mirroring the TUI's level colors */
+  --lvl-1: oklch(66% 0.17 25);
+  --lvl-2: oklch(72% 0.15 55);
+  --lvl-3: oklch(84% 0.13 95);
+  --lvl-4: oklch(76% 0.13 150);
+  --lvl-5: var(--color-muted);
   --nav-h: 68px;
 }
 
@@ -180,6 +186,55 @@ h1, h2, h3 { font-variation-settings: "SHRP" 100; }
 .ptable .what { color: var(--color-ink-2); }
 .ptable .proves { color: var(--color-muted); font-size: var(--text-sm); }
 .ptable td.num, .ptable .num { font-variant-numeric: tabular-nums; }
+.lv-1 { color: var(--lvl-1); }
+.lv-2 { color: var(--lvl-2); }
+.lv-3 { color: var(--lvl-3); }
+.lv-4 { color: var(--lvl-4); }
+.lv-5 { color: var(--lvl-5); }
+.lvls-note {
+  margin-top: var(--space-xl); max-width: 68ch;
+  color: var(--color-ink-2); font-size: var(--text-md);
+}
+.lvls-note code {
+  font-family: var(--font-mono); font-size: 0.9em; color: var(--color-ink);
+}
+
+/* radar scope + analysis list */
+.radar-fig { margin: var(--space-md) var(--space-lg); }
+.radar-screen {
+  background: var(--color-paper-2);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+}
+canvas.radar { width: 100%; height: 100%; display: block; }
+.radar-list {
+  list-style: none; margin: var(--space-xl) 0 0; padding: 0;
+  border-top: var(--rule-hair) solid var(--color-rule-2);
+}
+.radar-list li {
+  display: grid;
+  grid-template-columns: 8ch 9ch 5ch minmax(0, 1fr);
+  gap: var(--space-md);
+  padding: var(--space-sm) 0;
+  border-bottom: var(--rule-hair) solid var(--color-rule);
+  font-size: var(--text-sm);
+  align-items: baseline;
+}
+.radar-list .rk { font-family: var(--font-mono); color: var(--color-ink); }
+.radar-list .rd {
+  font-family: var(--font-mono); color: var(--color-ink-2);
+  font-variant-numeric: tabular-nums;
+}
+.radar-list .rb { color: var(--color-muted); }
+.radar-list .rn { color: var(--color-muted); }
+.radar-note {
+  margin-top: var(--space-md); color: var(--color-muted);
+  font-size: var(--text-sm);
+}
+@media (max-width: 40rem) {
+  .radar-list li { grid-template-columns: 7ch 8ch 4ch minmax(0, 1fr); gap: var(--space-sm); }
+}
 
 /* command index rows */
 .cmds { border-top: var(--rule-hair) solid var(--color-rule-2); }

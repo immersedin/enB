@@ -149,7 +149,7 @@ std::optional<GeoFix> platform_location() {
         DBusMessage* r =
             call_method(conn, "org.freedesktop.GeoClue2", "/org/freedesktop/GeoClue2/Manager",
                         "org.freedesktop.GeoClue2.Manager", "GetClient", "s", 5000,
-                        "p2p");
+                        "radius");
         const char* client_path = nullptr;
         bool have_client = reply_string(r, &client_path);
         if (r) dbus_message_unref(r);

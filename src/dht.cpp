@@ -146,12 +146,12 @@ asio::ip::udp::endpoint endpoint_to_asio(const Endpoint& ep,
 
 // ------------------------------------------------------------------
 // Peer record blob:
-//   magic "P2PREC1" | peer_id(32) | ed_pub(32) | name_len(1) | name |
+//   magic "RADIUSREC1" | peer_id(32) | ed_pub(32) | name_len(1) | name |
 //   n_endpoints(1) | endpoints... | issued_at(8) | sig(64)
 // sig = Ed25519 over everything before sig, key = ed_pub.
 // ------------------------------------------------------------------
-constexpr char kRecordMagic[] = "P2PREC1";
-constexpr size_t kRecordMagicLen = 8;
+constexpr char kRecordMagic[] = "RADIUSREC1";
+constexpr size_t kRecordMagicLen = 11;
 constexpr size_t kMaxRecordSize = 4096;
 
 crypto::Bytes peer_record_encode_body(const PeerRecord& rec) {
@@ -293,7 +293,7 @@ struct Query {
 };
 
 crypto::Key32 record_key_for(const crypto::Key32& peer_id) {
-    return sha256_key("p2p-peer-v1", peer_id);
+    return sha256_key("radius-peer-v1", peer_id);
 }
 
 // ------------------------------------------------------------------
@@ -830,7 +830,7 @@ struct Dht::Impl {
                     }
                     crypto::Bytes value(rest, rest + vlen);
                     PeerRecord rec;
-                    // The DHT key is SHA256("p2p-peer-v1" || peer_id);
+                    // The DHT key is SHA256("radius-peer-v1" || peer_id);
                     // the record carries the raw peer id, so accept only
                     // when recomputing the key matches the query target.
                     if (peer_record_decode(value, rec) &&

@@ -47,9 +47,9 @@ std::string curl_get(const std::string& url, int max_time) {
     } catch (...) {
         return "";
     }
-    fs::path out = dir / ("p2p-geo-" + own_pid() + ".json");
-    fs::path errf = dir / ("p2p-geo-" + own_pid() + ".err");
-    std::string cmd = "curl -fsSL -A \"p2p-chat\" "
+    fs::path out = dir / ("radius-geo-" + own_pid() + ".json");
+    fs::path errf = dir / ("radius-geo-" + own_pid() + ".err");
+    std::string cmd = "curl -fsSL -A \"radius\" "
                       "--connect-timeout 5 --max-time " +
                       std::to_string(max_time) + " -o " + "\"" +
                       out.string() + "\" \"" + url + "\" 2>\"" +

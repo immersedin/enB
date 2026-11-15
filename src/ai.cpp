@@ -105,10 +105,10 @@ std::string curl_post(const std::string& url, const std::string& api_key,
         return fail("no temp dir");
     }
     std::string tag = own_pid();
-    fs::path bodyf = dir / ("p2p-ai-" + tag + ".json");
-    fs::path outf = dir / ("p2p-ai-" + tag + ".out");
-    fs::path errf = dir / ("p2p-ai-" + tag + ".err");
-    fs::path codef = dir / ("p2p-ai-" + tag + ".code");
+    fs::path bodyf = dir / ("radius-ai-" + tag + ".json");
+    fs::path outf = dir / ("radius-ai-" + tag + ".out");
+    fs::path errf = dir / ("radius-ai-" + tag + ".err");
+    fs::path codef = dir / ("radius-ai-" + tag + ".code");
     {
         std::ofstream bf(bodyf, std::ios::trunc);
         bf << body;

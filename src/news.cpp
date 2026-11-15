@@ -64,13 +64,13 @@ std::string curl_get(const std::string& url, std::string* err) {
         return fail("no temp dir");
     }
     std::string tag = own_pid();
-    fs::path outf = dir / ("p2p-news-" + tag + ".out");
-    fs::path errf = dir / ("p2p-news-" + tag + ".err");
-    fs::path codef = dir / ("p2p-news-" + tag + ".code");
+    fs::path outf = dir / ("radius-news-" + tag + ".out");
+    fs::path errf = dir / ("radius-news-" + tag + ".err");
+    fs::path codef = dir / ("radius-news-" + tag + ".code");
     // -L follows redirects; a browser UA avoids some bot filtering.
     std::string cmd =
         std::string("curl -sS -L --connect-timeout 8 --max-time 20 ") +
-        "-A \"Mozilla/5.0 (p2p-chat)\" \"" + url + "\" " +
+        "-A \"Mozilla/5.0 (radius)\" \"" + url + "\" " +
         "-o \"" + outf.string() + "\" " +
         "-w \"%{http_code}\" >\"" + codef.string() + "\" " +
         "2>\"" + errf.string() + "\"";

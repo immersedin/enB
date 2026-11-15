@@ -8,7 +8,7 @@ namespace updater {
 
 struct ReleaseInfo {
     std::string tag;           // e.g. "v0.1.2"
-    std::string asset_name;    // e.g. "p2p-macos-arm64.zip"
+    std::string asset_name;    // e.g. "radius-macos-arm64.zip"
     std::string download_url;
 };
 

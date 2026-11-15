@@ -27,7 +27,7 @@ struct StoredMessage {
 // The database key lives in a separate 0600 file next to the database.
 class Database {
 public:
-    // data_dir e.g. ~/.p2p-chat ; creates dir, key file and schema.
+    // data_dir e.g. ~/.radius ; creates dir, key file and schema.
     explicit Database(const std::string& data_dir);
     ~Database();
 

@@ -7,8 +7,8 @@
 //
 // Important: CLLocationManager raises an NSException when the process
 // has no NSLocationWhenInUseUsageDescription in its Info.plist — which
-// is always the case for the bare `p2p` binary. We therefore bail out
-// early unless the key is present (i.e. we run inside p2p.app).
+// is always the case for the bare `radius` binary. We therefore bail out
+// early unless the key is present (i.e. we run inside Radius.app).
 
 #include "geo.h"
 
@@ -56,10 +56,10 @@ bool auth_denied(CLAuthorizationStatus s) {
 
 }  // namespace
 
-@interface P2PLocDelegate : NSObject <CLLocationManagerDelegate>
+@interface RadiusLocDelegate : NSObject <CLLocationManagerDelegate>
 @end
 
-@implementation P2PLocDelegate
+@implementation RadiusLocDelegate
 
 - (void)locationManager:(CLLocationManager*)manager
      didUpdateLocations:(NSArray<CLLocation*>*)locations {
@@ -117,7 +117,7 @@ std::optional<GeoFix> precise_location_run() {
             st.stop = false;
 
             CLLocationManager* mgr = [[CLLocationManager alloc] init];
-            P2PLocDelegate* del = [P2PLocDelegate new];
+            RadiusLocDelegate* del = [RadiusLocDelegate new];
             mgr.delegate = del;
             mgr.desiredAccuracy = kCLLocationAccuracyBest;
 

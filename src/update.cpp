@@ -31,11 +31,11 @@
 #ifndef APP_VERSION
 #define APP_VERSION "0.0.0"
 #endif
-#ifndef P2P_UPDATE_REPO
-#define P2P_UPDATE_REPO "immersedin/enB"
+#ifndef RADIUS_UPDATE_REPO
+#define RADIUS_UPDATE_REPO "immersedin/enB"
 #endif
-#ifndef P2P_UPDATE_ASSET
-#define P2P_UPDATE_ASSET ""
+#ifndef RADIUS_UPDATE_ASSET
+#define RADIUS_UPDATE_ASSET ""
 #endif
 
 namespace fs = std::filesystem;
@@ -45,9 +45,9 @@ namespace {
 
 std::string exe_name() {
 #ifdef _WIN32
-    return "p2p.exe";
+    return "radius.exe";
 #else
-    return "p2p";
+    return "radius";
 #endif
 }
 
@@ -219,18 +219,18 @@ bool fetch_latest(ReleaseInfo& out, std::string* err) {
     fs::path tmp;
     try {
         tmp = fs::temp_directory_path() /
-              ("p2p-rel-" + pid_string());
+              ("radius-rel-" + pid_string());
         fs::create_directories(tmp);
     } catch (const std::exception& e) {
         return fail(std::string("temp dir: ") + e.what());
     }
     fs::path json_path = tmp / "latest.json";
-    std::string api = "https://api.github.com/repos/" P2P_UPDATE_REPO
+    std::string api = "https://api.github.com/repos/" RADIUS_UPDATE_REPO
                       "/releases/latest";
     std::string dl_err;
     if (!curl_to_file(api,
                       {"Accept: application/vnd.github+json",
-                       "User-Agent: p2p-chat"},
+                       "User-Agent: radius"},
                       json_path, dl_err)) {
         fs::remove_all(tmp);
         return fail("cannot reach GitHub: " + dl_err);
@@ -245,7 +245,7 @@ bool fetch_latest(ReleaseInfo& out, std::string* err) {
     out.tag = tag;
 
     // Locate the asset object whose "name" matches our platform package.
-    const std::string asset = P2P_UPDATE_ASSET;
+    const std::string asset = RADIUS_UPDATE_ASSET;
     size_t pos = 0;
     while ((pos = js.find("\"browser_download_url\"", pos)) !=
            std::string::npos) {
@@ -270,7 +270,7 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
         return false;
     };
 
-    if (P2P_UPDATE_ASSET[0] == '\0' || rel.download_url.empty())
+    if (RADIUS_UPDATE_ASSET[0] == '\0' || rel.download_url.empty())
         return fail("no update package for this platform");
     if (compare_versions(rel.tag, current_version()) <= 0)
         return fail("already up to date");
@@ -287,7 +287,7 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
     fs::path work;
     try {
         work = self.parent_path() /
-               (".p2p-update-" + pid_string());
+               (".radius-update-" + pid_string());
         fs::create_directories(work / "extract");
     } catch (const std::exception& e) {
         return fail(std::string("work dir: ") + e.what());
@@ -375,7 +375,7 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
         // so swap the entire bundle instead.
         fs::path dst = self_bundle;
         fs::path old = dst;
-        old += ".p2p-old";
+        old += ".radius-old";
         fs::remove_all(old, ec);
         fs::rename(dst, old, ec);
         if (ec) {
@@ -409,7 +409,7 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
             if (ec || !de.is_regular_file()) continue;
             fs::path dst = target_dir / de.path().filename();
             fs::path tmpf =
-                target_dir / (de.path().filename().string() + ".p2p-new");
+                target_dir / (de.path().filename().string() + ".radius-new");
             fs::copy_file(de.path(), tmpf,
                           fs::copy_options::overwrite_existing, ec);
             if (ec) {
@@ -439,7 +439,7 @@ bool apply_update(const ReleaseInfo& rel, std::string& err) {
     if (pid == 0) {
         usleep(400000);
         setsid();
-        execl(spawn_exe.c_str(), "p2p", static_cast<char*>(nullptr));
+        execl(spawn_exe.c_str(), "radius", static_cast<char*>(nullptr));
         _exit(127);
     }
     cleanup();

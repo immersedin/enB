@@ -1,5 +1,5 @@
-# Build the p2p chat TUI application on Windows via vcpkg (MSVC, static deps).
-# Produces build/Release/p2p.exe — a single-file binary for Windows 10 x64.
+# Build the Radius chat TUI application on Windows via vcpkg (MSVC, static deps).
+# Produces build/Release/radius.exe — a single-file binary for Windows 10 x64.
 param(
     [string]$VcpkgTriplet = "x64-windows-static-md",
     [string]$VcpkgRoot = $(if ($env:VCPKG_INSTALLATION_ROOT) { $env:VCPKG_INSTALLATION_ROOT } else { "C:\vcpkg" })
@@ -15,4 +15,4 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release `
     -DVCPKG_TARGET_TRIPLET=$VcpkgTriplet
 cmake --build build --config Release
 
-Write-Host "Built: $(Join-Path $PSScriptRoot 'build/Release/p2p.exe')"
+Write-Host "Built: $(Join-Path $PSScriptRoot 'build/Release/radius.exe')"

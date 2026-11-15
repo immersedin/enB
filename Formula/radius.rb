@@ -1,4 +1,4 @@
-class P2p < Formula
+class Radius < Formula
   desc "Decentralized end-to-end encrypted chat over a Kademlia DHT"
   homepage "https://github.com/immersedin/enB"
   url "https://github.com/immersedin/enB/archive/refs/tags/v0.5.3.tar.gz"
@@ -18,10 +18,10 @@ class P2p < Formula
            "-GNinja",
            *std_cmake_args
     system "cmake", "--build", "build"
-    bin.install "build/p2p"
+    bin.install "build/radius"
   end
 
   test do
-    assert_match "ALL PASS", shell_output("#{bin}/p2p --selftest")
+    assert_match "ALL PASS", shell_output("#{bin}/radius --selftest")
   end
 end

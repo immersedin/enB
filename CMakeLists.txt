@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.24)
 # Fallback version for builds without git metadata (e.g. source tarballs);
 # when a git checkout is available the version is taken from `git describe`
 # below, so release tags drive APP_VERSION automatically.
-project(p2p VERSION 0.4.1 LANGUAGES CXX)
+project(radius VERSION 0.4.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -63,18 +63,18 @@ find_package(Threads REQUIRED)
 # Release asset picked by the auto-updater for this platform. Must match
 # the artifact names produced by .github/workflows/release.yml.
 if(WIN32)
-    set(P2P_UPDATE_ASSET "p2p-windows-x64.zip")
+    set(RADIUS_UPDATE_ASSET "radius-windows-x64.zip")
 elseif(APPLE)
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
-        set(P2P_UPDATE_ASSET "p2p-macos-arm64.zip")
+        set(RADIUS_UPDATE_ASSET "radius-macos-arm64.zip")
     else()
-        set(P2P_UPDATE_ASSET "p2p-macos-x86_64.zip")
+        set(RADIUS_UPDATE_ASSET "radius-macos-x86_64.zip")
     endif()
 else()
-    set(P2P_UPDATE_ASSET "")
+    set(RADIUS_UPDATE_ASSET "")
 endif()
 
-add_executable(p2p
+add_executable(radius
     src/ai.cpp
     src/main.cpp
     src/crypto.cpp
@@ -93,7 +93,7 @@ add_executable(p2p
 # Derive the app version from the nearest git tag ("v0.4.0",
 # "v0.4.0-3-gdeadbee", ...). Falls back to PROJECT_VERSION for tarball
 # builds or checkouts without tags.
-set(P2P_APP_VERSION "${PROJECT_VERSION}")
+set(RADIUS_APP_VERSION "${PROJECT_VERSION}")
 execute_process(
     COMMAND git describe --tags --always --dirty
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
@@ -102,25 +102,25 @@ execute_process(
     ERROR_QUIET
 )
 if(GIT_DESCRIBE MATCHES "^v?([0-9]+)\\.([0-9]+)\\.([0-9]+)")
-    set(P2P_APP_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
+    set(RADIUS_APP_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.${CMAKE_MATCH_3}")
 elseif(GIT_DESCRIBE MATCHES "^v?([0-9]+)\\.([0-9]+)")
-    set(P2P_APP_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.0")
+    set(RADIUS_APP_VERSION "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}.0")
 endif()
-message(STATUS "p2p version: ${P2P_APP_VERSION} (git: '${GIT_DESCRIBE}')")
+message(STATUS "radius version: ${RADIUS_APP_VERSION} (git: '${GIT_DESCRIBE}')")
 
-target_compile_definitions(p2p PRIVATE
-    APP_VERSION="${P2P_APP_VERSION}"
-    P2P_UPDATE_REPO="immersedin/enB"
-    P2P_UPDATE_ASSET="${P2P_UPDATE_ASSET}"
+target_compile_definitions(radius PRIVATE
+    APP_VERSION="${RADIUS_APP_VERSION}"
+    RADIUS_UPDATE_REPO="immersedin/enB"
+    RADIUS_UPDATE_ASSET="${RADIUS_UPDATE_ASSET}"
 )
 
-target_include_directories(p2p PRIVATE
+target_include_directories(radius PRIVATE
     ${ASIO_INCLUDE_DIR}
     ${SODIUM_INCLUDE_DIR}
     ${SQLCIPHER_INCLUDE_DIR}
 )
 
-target_link_libraries(p2p PRIVATE
+target_link_libraries(radius PRIVATE
     ${SODIUM_LIBRARY}
     ${SQLCIPHER_LIBRARY}
     ${ASIO_LIBS}
@@ -130,36 +130,36 @@ target_link_libraries(p2p PRIVATE
 
 # Static sqlcipher (vcpkg) needs OpenSSL symbols at link time.
 if(OpenSSL_FOUND)
-    target_link_libraries(p2p PRIVATE OpenSSL::SSL OpenSSL::Crypto)
+    target_link_libraries(radius PRIVATE OpenSSL::SSL OpenSSL::Crypto)
 endif()
 
 if(APPLE)
-    target_sources(p2p PRIVATE src/geo_macos.mm src/audio_macos.mm)
+    target_sources(radius PRIVATE src/geo_macos.mm src/audio_macos.mm)
     find_library(CORELOCATION_LIB CoreLocation)
     find_library(COREFOUNDATION_LIB CoreFoundation)
     find_library(FOUNDATION_LIB Foundation)
     # CoreAudio HAL: notification-sound output device enumeration and
     # routing (kAudioHardwareProperty*).
     find_library(COREAUDIO_LIB CoreAudio)
-    target_link_libraries(p2p PRIVATE
+    target_link_libraries(radius PRIVATE
         ${CORELOCATION_LIB} ${COREFOUNDATION_LIB} ${FOUNDATION_LIB}
         ${COREAUDIO_LIB})
 else()
-    target_sources(p2p PRIVATE src/audio_other.cpp)
+    target_sources(radius PRIVATE src/audio_other.cpp)
 endif()
 
 if(WIN32)
-    target_sources(p2p PRIVATE src/geo_windows.cpp)
+    target_sources(radius PRIVATE src/geo_windows.cpp)
     # WinRT activation (RoGetActivationFactory, WindowsCreateString).
-    target_link_libraries(p2p PRIVATE windowsapp combase)
+    target_link_libraries(radius PRIVATE windowsapp combase)
 endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # GeoClue2 over the system D-Bus (GNOME/KDE location service).
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(DBUS1 REQUIRED dbus-1)
-    target_sources(p2p PRIVATE src/geo_linux.cpp)
-    target_include_directories(p2p PRIVATE ${DBUS1_INCLUDE_DIRS})
-    target_link_libraries(p2p PRIVATE ${DBUS1_LIBRARIES})
-    target_compile_definitions(p2p PRIVATE ${DBUS1_CFLAGS_OTHER})
+    target_sources(radius PRIVATE src/geo_linux.cpp)
+    target_include_directories(radius PRIVATE ${DBUS1_INCLUDE_DIRS})
+    target_link_libraries(radius PRIVATE ${DBUS1_LIBRARIES})
+    target_compile_definitions(radius PRIVATE ${DBUS1_CFLAGS_OTHER})
 endif()

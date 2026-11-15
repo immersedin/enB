@@ -69,10 +69,10 @@ int run_selftest() {
     // Unbuffered: CI captures stdout through a pipe, and a crash would
     // otherwise swallow everything printed so far.
     std::setvbuf(stdout, nullptr, _IONBF, 0);
-    std::printf("== p2p selftest ==\n");
+    std::printf("== radius selftest ==\n");
 
     // Fresh temp dirs for the two chat databases.
-    auto base = fs::temp_directory_path() / "p2p-selftest";
+    auto base = fs::temp_directory_path() / "radius-selftest";
     fs::remove_all(base);
     fs::create_directories(base);
 
@@ -212,10 +212,10 @@ int run_selftest() {
           "bob has session keyed by alice's peer id");
 
     // Message exchange: bob -> alice.
-    check(net_b.send(pid_hex(alice), "hello p2p"), "bob sent message");
+    check(net_b.send(pid_hex(alice), "hello radius"), "bob sent message");
     check(wait_for([&] { return got_msg.load(); }),
           "alice received decrypted message");
-    check(got_text == "hello p2p", "message content intact");
+    check(got_text == "hello radius", "message content intact");
 
     // Peer-id enforcement: dialing alice while claiming bob's own peer
     // id must fail (remote static key != expected peer id).

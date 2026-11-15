@@ -453,8 +453,8 @@ void DoubleRatchet::init(const Key32& root, bool initiator_side,
     Key32 c_ab, c_ba;
     Key32 ikm_a{}, ikm_b{};
     ikm_a[0] = 'a'; ikm_b[0] = 'b';
-    ratchet_hkdf(root, ikm_a, "p2p-ratchet-a2b", c_ab);
-    ratchet_hkdf(root, ikm_b, "p2p-ratchet-b2a", c_ba);
+    ratchet_hkdf(root, ikm_a, "radius-ratchet-a2b", c_ab);
+    ratchet_hkdf(root, ikm_b, "radius-ratchet-b2a", c_ba);
 
     if (initiator_side) {
         send_chain_ = c_ab;
@@ -475,14 +475,14 @@ Bytes DoubleRatchet::encrypt(const Bytes& plaintext) {
         throw std::runtime_error("ratchet DH failed");
 
     Key32 new_chain;
-    ratchet_hkdf(send_chain_, dh, "p2p-chain", new_chain);
+    ratchet_hkdf(send_chain_, dh, "radius-chain", new_chain);
     send_chain_ = new_chain;
 
     uint64_t counter = send_count_++;
     Key32 ikm{};
     for (int i = 0; i < 8; ++i) ikm[i] = static_cast<uint8_t>(counter >> (8 * i));
     Key32 msg_key;
-    ratchet_hkdf(send_chain_, ikm, "p2p-msgkey", msg_key);
+    ratchet_hkdf(send_chain_, ikm, "radius-msgkey", msg_key);
 
     // header = e_pub || counter
     Bytes header(eph.pub.begin(), eph.pub.end());
@@ -512,13 +512,13 @@ bool DoubleRatchet::decrypt(const Bytes& frame, Bytes& plaintext) {
     if (!x25519_shared(my_ratchet_.priv, e_pub, dh)) return false;
 
     Key32 new_chain;
-    ratchet_hkdf(recv_chain_, dh, "p2p-chain", new_chain);
+    ratchet_hkdf(recv_chain_, dh, "radius-chain", new_chain);
     recv_chain_ = new_chain;
 
     Key32 ikm{};
     for (int i = 0; i < 8; ++i) ikm[i] = static_cast<uint8_t>(counter >> (8 * i));
     Key32 msg_key;
-    ratchet_hkdf(recv_chain_, ikm, "p2p-msgkey", msg_key);
+    ratchet_hkdf(recv_chain_, ikm, "radius-msgkey", msg_key);
 
     Bytes header(frame.begin(), frame.begin() + 40);
     uint8_t nonce[kNonceLen] = {};

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>p2p: end-to-end encrypted chat for terminals</title>
-<meta name="description" content="p2p is a decentralized, end-to-end encrypted chat client for the terminal. No servers, no accounts: Noise XX, Double Ratchet and a Kademlia DHT between two peers.">
+<title>Radius: danger monitor and E2EE chat for the terminal</title>
+<meta name="description" content="Radius is a terminal app that scores civilian danger from reported combat events (five levels, tracked cities, optional AI assessment) and chats end-to-end over Noise XX, Double Ratchet and a Kademlia DHT. No servers, no accounts.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Geologica:wght,CRSV,SHRP@200..500,0,0..100&display=swap" rel="stylesheet">
@@ -16,8 +16,9 @@
 
 <header class="nav">
   <div class="container nav__in">
-    <a class="wordmark" href="#top" aria-label="p2p, back to top">p2p<small>secure chat</small></a>
+    <a class="wordmark" href="#top" aria-label="Radius, back to top">radius<small>danger + chat</small></a>
     <nav class="nav__links" aria-label="Sections">
+      <a href="#danger">Danger</a>
       <a href="#protocol">Protocol</a>
       <a href="#commands">Commands</a>
       <a href="#platforms">Platforms</a>
@@ -33,59 +34,109 @@
   <section class="hero" id="top">
     <div class="container hero__grid">
       <div class="hero__copy" data-reveal>
-        <h1>Chat that needs no server.</h1>
-        <p class="lead">End-to-end encrypted messages between two terminals, with nothing in between.</p>
+        <h1>Know your danger level.</h1>
+        <p class="lead">Scores civilian danger from reported events; chats end to end, serverless.</p>
         <div class="actions">
-          <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download p2p</a>
+          <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download Radius</a>
           <a class="btn btn--line" href="https://github.com/immersedin/enB" rel="noopener">View source</a>
         </div>
       </div>
       <div class="hero__vis" data-reveal style="--i:1">
         <canvas class="cloud" id="cloud" aria-hidden="true"></canvas>
-        <figure class="shot ticks" data-slot="chat" data-kind="product" data-alt="The p2p chat window in a live session between alice and bob">
-          <pre class="scr" role="img" aria-label="p2p chat window: bob online, two messages exchanged">
-<span class="k-cyan k-b"> P2P Secure Chat</span><span class="k-b"> v0.4.1                                                </span><span class="k-gray k-b">me:alice  fp:91908ef255cdd2f2  tcp:5555  udp:5555</span>
-<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
-<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-green k-b"> bob </span><span class="k-gray k-b"> online </span><span class="k-b">─────────────────────────────────────────────────────────────────────╮</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│ </span><span class="k-green k-b">● </span><span class="k-cyan k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ </span><span class="k-green k-b">you: </span><span class="k-b">hey bob, this is E2EE                                                       │</span>
-<span class="k-b">│                                  ││ </span><span class="k-cyan k-b">bob: </span><span class="k-b">hi alice, loud and clear                                                    │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+        <figure class="shot ticks" data-slot="main" data-kind="product" data-alt="The Radius Main tab: danger level L3 elevated with index 41, tracked cities and system state">
+          <pre class="scr" role="img" aria-label="Radius Main tab: danger level L3 elevated, index 41, tracked cities and system state">
+<span class="k-gray">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b"> Radius</span><span class="k-b"> v0.4.2</span><span class="k-yellow k-b"> L3</span><span class="k-gray"> ai</span>                                             <span class="k-gray">me:alice  fp:91908ef255cdd2f2  tcp:5555  udp:5555  ip:203.0.113.7  loc:Odesa,UA</span>
+<span class="k-cyan k-b"> Main </span><span class="k-gray"> │ Logs │ Chats │ Settings </span>
+<span class="k-b">╭</span><span class="k-yellow"> Danger </span><span class="k-b">──────────────────────────────────╮</span><span class="k-b">  </span><span class="k-b">╭</span><span class="k-yellow"> Main </span><span class="k-b">──────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│</span>                  <span class="k-yellow k-b">█   ███</span>                   <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-yellow k-b"> SYSTEM </span>                                                                                      <span class="k-b">│</span>
+<span class="k-b">│</span>                  <span class="k-yellow k-b">█     █</span>                   <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  version         0.4.2</span>                                                                       <span class="k-b">│</span>
+<span class="k-b">│</span>                  <span class="k-yellow k-b">█    ██</span>                   <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  name            alice</span>                                                                       <span class="k-b">│</span>
+<span class="k-b">│</span>                  <span class="k-yellow k-b">█     █</span>                   <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  peer id         f6ee0e177476788c20210f0f5aa446fc28a90d38df219405fb83ab8f036a835b</span>            <span class="k-b">│</span>
+<span class="k-b">│</span>                  <span class="k-yellow k-b">███ ███</span>                   <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  fingerprint     91908ef255cdd2f2</span>                                                            <span class="k-b">│</span>
+<span class="k-b">│</span>                  <span class="k-yellow k-b">elevated</span>                  <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  data dir        /Users/alice/.radius</span>                                                      <span class="k-b">│</span>
+<span class="k-b">│</span>     <span class="k-gray">index </span><span class="k-yellow">████████░░░░░░░░░░░░</span><span class="k-b"> 41/100</span>      <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span>                                                                                              <span class="k-b">│</span>
+<span class="k-b">│</span> <span class="k-gray">AI verdict • updated 12s ago, openai-fast</span>  <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span>                                                                                              <span class="k-b">│</span>
+<span class="k-b">│</span>    <span class="k-cyan">Strike reported 42 km away, 2h ago.</span>     <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-yellow k-b"> NETWORK </span>                                                                                     <span class="k-b">│</span>
+<span class="k-b">│</span>    <span class="k-gray">position: 46.4825, 30.7233 ±25.0 km</span>     <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  public ip       203.0.113.7  (Example ISP)</span>                                                  <span class="k-b">│</span>
+<span class="k-b">│</span>                                            <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  ports           tcp:5555   udp:5555</span>                                                         <span class="k-b">│</span>
+<span class="k-b">│</span>            <span class="k-yellow k-b">CONTRIBUTING EVENTS</span>             <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  contacts        3 (1 online)</span>                                                                <span class="k-b">│</span>
+<span class="k-b">│</span> <span class="k-gray">event #0 strike 41.8km eff 40.2km age 2.0h</span> <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  dht             12 nodes   4 records</span>                                                        <span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-gray">event #1 shelling 92.4km eff 90.1km age 9.0h</span><span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span>                                                                                              <span class="k-b">│</span>
+<span class="k-b">│</span>            <span class="k-gray">next: </span><span class="k-cyan k-b">Odesa</span><span class="k-gray"> — in 42s</span>            <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-yellow k-b"> DATA </span>                                                                                        <span class="k-b">│</span>
+<span class="k-b">│</span>        <span class="k-gray">queue: [Odesa] › Lviv › Kyiv</span>        <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  combat events   7</span>                                                                           <span class="k-b">│</span>
+<span class="k-b">│</span>               <span class="k-yellow k-b">TRACKED CITIES</span>               <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  tracked cities  3   (/city list)</span>                                                            <span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-gray">  Odesa</span>   <span class="k-yellow k-b">L3 elevated  41/100</span><span class="k-gray"> ai  upd 5m ago</span><span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span>                                                                                              <span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-gray">  Lviv</span>            <span class="k-green k-b">L4 low  12/100</span><span class="k-gray">  upd 1h ago</span><span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-yellow k-b"> UPDATE </span>                                                                                      <span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-gray">  Kyiv</span>   <span class="k-gray k-b">L5 none detected  8/100</span><span class="k-gray">  upd 2h ago</span><span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray">  update          up to date</span>                                                                  <span class="k-b">│</span>
+<span class="k-b">│</span>                                            <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span>                                                                                              <span class="k-b">│</span>
+<span class="k-b">│</span>                                            <span class="k-b">│</span><span class="k-b">  </span><span class="k-b">│</span><span class="k-gray"> Tab: switch view | /help for commands</span>                                                    <span class="k-b">│</span>
+<span class="k-b">╰</span><span class="k-b">────────────────────────────────────────────╯</span><span class="k-b">  </span><span class="k-b">╰</span><span class="k-b">──────────────────────────────────────────────────────────────────────────────────────────────╯</span>
 <span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
-<span class="k-gray k-b"> Enter: send | /close: back | PgUp/PgDn: scroll</span>
-</pre>        </figure>
+<span class="k-gray"> Tab: switch view | /help for commands | PgUp/PgDn/wheel: scroll</span>
+</pre>
+        </figure>
       </div>
+    </div>
+  </section>
+
+  <!-- ============ danger: radar + levels ============ -->
+  <section class="section" id="danger">
+    <div class="container grid-12">
+      <div class="head-block" data-reveal>
+        <h2>A level for where you are</h2>
+        <p class="lead">Reported events in, one index out, for you and every city you track.</p>
+        <ol class="radar-list">
+          <li><span class="rk">strike</span><span class="rd">41.8 km</span><span class="rb">NE</span><span class="rn">ongoing</span></li>
+          <li><span class="rk">shelling</span><span class="rd">92.4 km</span><span class="rb">E</span><span class="rn">ended</span></li>
+          <li><span class="rk">strike</span><span class="rd">118 km</span><span class="rb">NNW</span><span class="rn">ended</span></li>
+          <li><span class="rk">ground</span><span class="rd">156 km</span><span class="rb">WSW</span><span class="rn">ended</span></li>
+          <li><span class="rk">shelling</span><span class="rd">204 km</span><span class="rb">SSE</span><span class="rn">ended</span></li>
+          <li><span class="rk">strike</span><span class="rd">260 km</span><span class="rb">NE</span><span class="rn">ended</span></li>
+          <li><span class="rk">other</span><span class="rd">310 km</span><span class="rb">NW</span><span class="rn">ended</span></li>
+        </ol>
+        <p class="radar-note">Distances and bearings are illustrative; the app computes them from your position and each report.</p>
+      </div>
+      <div class="body-block" data-reveal style="--i:1">
+        <figure class="shot ticks radar-fig">
+          <div class="radar-screen"><canvas class="radar" id="radar" aria-hidden="true"></canvas></div>
+        </figure>
+      </div>
+    </div>
+    <div class="container" style="margin-top: var(--space-2xl);" data-reveal>
+      <table class="ptable lvls">
+          <thead>
+            <tr><th>Level</th><th>Index</th><th>Means</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="step lv-1">L1</td>
+              <td class="num">80-100</td>
+              <td class="proves">Immediate danger close by.</td>
+            </tr>
+            <tr>
+              <td class="step lv-2">L2</td>
+              <td class="num">60-79</td>
+              <td class="proves">Serious activity nearby.</td>
+            </tr>
+            <tr>
+              <td class="step lv-3">L3</td>
+              <td class="num">35-59</td>
+              <td class="proves">Events within tens of km.</td>
+            </tr>
+            <tr>
+              <td class="step lv-4">L4</td>
+              <td class="num">10-34</td>
+              <td class="proves">Distant or stale reports.</td>
+            </tr>
+            <tr>
+              <td class="step lv-5">L5</td>
+              <td class="num">0-9</td>
+              <td class="proves">No threat in the data (not a guarantee).</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="lvls-note">Every reported event (shelling, strike, ground action) scores by distance and age, weighted by confirmations, and a noisy-OR keeps one confirmed report from being averaged away. <code>/danger ai</code> asks an LLM (Pollinations by default, any OpenAI-compatible endpoint) to weigh the same events plus Google News headlines. Each tracked city gets its own level on the Main tab; levels 1 to 3 ring an alarm you can silence.</p>
     </div>
   </section>
 
@@ -142,59 +193,74 @@
       </div>
       <div class="body-block" data-reveal style="--i:1">
         <div class="cmds">
+          <div class="cmd"><code>/danger [ai]</code><p>Local score; <code>ai</code> asks an LLM.</p></div>
+          <div class="cmd"><code>/event add &lt;lat&gt; &lt;lon&gt;</code><p>Reports a combat event.</p></div>
+          <div class="cmd"><code>/events</code><p>Stored events with distances.</p></div>
+          <div class="cmd"><code>/city add &lt;query&gt;</code><p>Tracks a city’s danger level.</p></div>
+          <div class="cmd"><code>/city search &lt;query&gt;</code><p>Finds settlements to track.</p></div>
+          <div class="cmd"><code>/sound</code><p>Per-level alert sounds.</p></div>
           <div class="cmd"><code>/invite [ttl]</code><p>Signs an invite.</p></div>
           <div class="cmd"><code>/connect &lt;code|id|file&gt;</code><p>Resolves, verifies, connects.</p></div>
-          <div class="cmd"><code>/chat &lt;name&gt;</code><p>Opens a chat.</p></div>
-          <div class="cmd"><code>/peerid</code><p>Copies your id.</p></div>
-          <div class="cmd"><code>/copyid &lt;name&gt;</code><p>Copies a contact id.</p></div>
+          <div class="cmd"><code>/chat &lt;name&gt;</code><p>Opens an E2EE chat.</p></div>
+          <div class="cmd"><code>/peerid</code><p>Copies your peer id.</p></div>
           <div class="cmd"><code>/dht</code><p>Nodes, records, endpoint.</p></div>
           <div class="cmd"><code>/bootstrap &lt;host:port&gt;</code><p>Adds a DHT node.</p></div>
+          <div class="cmd"><code>/update</code><p>Installs the latest release.</p></div>
         </div>
       </div>
     </div>
     <div class="container" style="margin-top: var(--space-2xl);">
-      <figure class="shot ticks" data-slot="help" data-kind="product" data-alt="The p2p console listing every slash command" data-reveal>
-        <pre class="scr" role="img" aria-label="p2p console showing the slash command list">
-<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
-<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-cyan k-b"> Console </span><span class="k-b">─────────────────────────────────────────────────────────────────────────╮</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│ </span><span class="k-gray k-b">○ </span><span class="k-white k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ commands:                                                                        │</span>
-<span class="k-b">│                                  ││   /friends              list friends                                             │</span>
-<span class="k-b">│                                  ││   /add &lt;name&gt; &lt;host&gt; &lt;port&gt;   add friend &amp; connect                               │</span>
-<span class="k-b">│                                  ││   /remove &lt;name&gt;        remove friend                                            │</span>
-<span class="k-b">│                                  ││   /chat &lt;name&gt;          open chat (auto-connects)                                │</span>
-<span class="k-b">│                                  ││   /connect &lt;arg&gt; [name]  connect by invite code,                                 │</span>
-<span class="k-b">│                                  ││                        peer id, friend name or a                                 │</span>
-<span class="k-b">│                                  ││                        file holding the code; optional                           │</span>
-<span class="k-b">│                                  ││                        [name] renames a new peer                                 │</span>
-<span class="k-b">│                                  ││   /invite [ttl] [save &lt;file&gt;]  create invitation                                 │</span>
-<span class="k-b">│                                  ││                        (code is copied to clipboard)                             │</span>
-<span class="k-b">│                                  ││   /peerid               show &amp; copy this peer's id                               │</span>
-<span class="k-b">│                                  ││   /copyid &lt;name&gt;        copy friend's peer id                                    │</span>
-<span class="k-b">│                                  ││   /dht                  DHT status                                               │</span>
-<span class="k-b">│                                  ││   /bootstrap &lt;host:port&gt;  add DHT bootstrap node                                 │</span>
-<span class="k-b">│                                  ││   /close                back to console                                          │</span>
-<span class="k-b">│                                  ││   /update               check GitHub for updates &amp; install                       │</span>
-<span class="k-b">│                                  ││   /version              show version info                                        │</span>
-<span class="k-b">│                                  ││   /quit                 exit                                                     │</span>
-<span class="k-b">│                                  ││ any other text is sent to the open chat                                          │</span>
-<span class="k-b">│                                  ││ PgUp/PgDn, arrows, wheel: scroll console/chat                                    │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+      <figure class="shot ticks" data-slot="help" data-kind="product" data-alt="The Radius console listing every slash command" data-reveal>
+        <pre class="scr" role="img" aria-label="Radius Logs tab listing every slash command">
+<span class="k-gray">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b"> Radius</span><span class="k-b"> v0.4.2</span><span class="k-yellow k-b"> L3</span><span class="k-gray"> ai</span>                                             <span class="k-gray">me:alice  fp:91908ef255cdd2f2  tcp:5555  udp:5555  ip:203.0.113.7  loc:Odesa,UA</span>
+<span class="k-gray"> Main </span><span class="k-gray"> │ </span><span class="k-cyan k-b"> Logs </span><span class="k-gray"> │ </span><span class="k-gray"> Chats </span><span class="k-gray"> │ </span><span class="k-gray"> Settings </span>                                                                                                          
+<span class="k-b">╭</span><span class="k-cyan"> Logs </span><span class="k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│</span><span class="k-gray">  lines 1-38 of 46 (scrolled up — PgDn/PgUp)                                                                                                  </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">commands:                                                                                                                                     </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /friends              list friends                                                                                                          </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /add &lt;name&gt; &lt;host&gt; &lt;port&gt;   add friend &amp; connect                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /remove &lt;name&gt;        remove friend                                                                                                         </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /chat &lt;name&gt;          open chat (auto-connects)                                                                                             </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /connect &lt;arg&gt; [name]  connect by invite code,                                                                                              </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       peer id, friend name or a                                                                                              </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       file holding the code; optional                                                                                        </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       [name] renames a new peer                                                                                              </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /invite [ttl] [save &lt;file&gt;]  create invitation                                                                                              </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       (code is copied to clipboard)                                                                                          </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /peerid               show &amp; copy this peer's id                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /copyid &lt;name&gt;        copy friend's peer id                                                                                                 </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /dht                  DHT status                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /bootstrap &lt;host:port&gt;  add DHT bootstrap node                                                                                              </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /event add &lt;lat&gt; &lt;lon&gt; [kind] [age=&lt;h&gt;] [conf=&lt;n&gt;]                                                                                          </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       [ongoing|ended] [note]  report                                                                                         </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       a combat event (kinds:                                                                                                 </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       shelling|strike|ground|other)                                                                                          </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /event remove &lt;n&gt; /events /events clear                                                                                                     </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /danger [ai]           civilian danger assessment;                                                                                          </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       'ai' asks an LLM (Pollinations,                                                                                        </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       no key needed)                                                                                                         </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city search &lt;query&gt;  find settlements (cityapi.org)                                                                                        </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city more              next page of last search                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city add &lt;lat&gt; &lt;lon&gt; [name]   track a city                                                                                                 </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city add &lt;query&gt;      track top search hit                                                                                                 </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city add #&lt;n&gt;         track /city search hit n                                                                                             </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city remove &lt;name|#n&gt; /city list /city clear                                                                                               </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /city log &lt;name&gt; /city logs                                                                                                                 </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       per-city AI logs                                                                                                       </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       (logs/cities/&lt;name&gt;.log)                                                                                               </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       each city gets its own danger                                                                                          </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       level on the Main tab                                                                                                  </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">  /sound [on|off|test [lvl]|ack|sounds|levels ...]                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       danger-level notification sounds;                                                                                      </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       L1-L3 repeat as an alarm, /sound                                                                                       </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                       ack silences until the level changes                                                                                   </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                                                                                                                              </span><span class="k-b">│</span>
+<span class="k-b">╰</span><span class="k-b">──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯</span>
 <span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
-<span class="k-gray k-b">/help for commands | PgUp/PgDn/wheel: scroll</span>
-</pre>      </figure>
+<span class="k-gray"> Tab: switch view | /help for commands | PgUp/PgDn/wheel: scroll</span>
+</pre>
+      </figure>
     </div>
   </section>
 
@@ -209,17 +275,17 @@
         <div class="plats">
           <div class="plat">
             <div class="plat__name">macOS, Apple silicon</div>
-            <div class="plat__artifact">p2p-macos-arm64.zip</div>
+            <div class="plat__artifact">radius-macos-arm64.zip</div>
             <div class="plat__need">Prebuilt release asset.</div>
           </div>
           <div class="plat">
             <div class="plat__name">macOS, Intel</div>
-            <div class="plat__artifact">p2p-macos-x86_64.zip</div>
+            <div class="plat__artifact">radius-macos-x86_64.zip</div>
             <div class="plat__need">Prebuilt release asset.</div>
           </div>
           <div class="plat">
             <div class="plat__name">Windows x64</div>
-            <div class="plat__artifact">p2p-windows-x64.zip</div>
+            <div class="plat__artifact">radius-windows-x64.zip</div>
             <div class="plat__need">Prebuilt release asset.</div>
           </div>
           <div class="plat">
@@ -239,53 +305,60 @@
         <h2>Take it peer to peer.</h2>
         <p class="lead">One binary, one port, two keys. First contact is an invite code.</p>
         <div class="actions">
-          <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download p2p</a>
+          <a class="btn" href="https://github.com/immersedin/enB/releases" rel="noopener">Download Radius</a>
           <a class="btn btn--line" href="https://github.com/immersedin/enB" rel="noopener">Source on GitHub</a>
         </div>
       </div>
       <div class="body-block" data-reveal style="--i:1">
-        <figure class="shot ticks" data-slot="peerid" data-kind="product" data-alt="The p2p console showing a peer id and DHT endpoint">
-          <pre class="scr" role="img" aria-label="p2p console showing the peer id and DHT endpoint">
-<span class="k-gray k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
-<span class="k-b">╭</span><span class="k-yellow k-b"> Contacts </span><span class="k-b">────────────────────────╮╭</span><span class="k-cyan k-b"> Console </span><span class="k-b">─────────────────────────────────────────────────────────────────────────╮</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│ </span><span class="k-gray k-b">○ </span><span class="k-white k-b">bob</span><span class="k-b">             </span><span class="k-gray k-b">127.0.0.1:5556</span><span class="k-b"> ││ commands:                                                                        │</span>
-<span class="k-b">│                                  ││   /friends              list friends                                             │</span>
-<span class="k-b">│                                  ││   /add &lt;name&gt; &lt;host&gt; &lt;port&gt;   add friend &amp; connect                               │</span>
-<span class="k-b">│                                  ││   /remove &lt;name&gt;        remove friend                                            │</span>
-<span class="k-b">│                                  ││   /chat &lt;name&gt;          open chat (auto-connects)                                │</span>
-<span class="k-b">│                                  ││   /connect &lt;arg&gt; [name]  connect by invite code,                                 │</span>
-<span class="k-b">│                                  ││                        peer id, friend name or a                                 │</span>
-<span class="k-b">│                                  ││                        file holding the code; optional                           │</span>
-<span class="k-b">│                                  ││                        [name] renames a new peer                                 │</span>
-<span class="k-b">│                                  ││   /invite [ttl] [save &lt;file&gt;]  create invitation                                 │</span>
-<span class="k-b">│                                  ││                        (code is copied to clipboard)                             │</span>
-<span class="k-b">│                                  ││   /peerid               show &amp; copy this peer's id                               │</span>
-<span class="k-b">│                                  ││   /copyid &lt;name&gt;        copy friend's peer id                                    │</span>
-<span class="k-b">│                                  ││   /dht                  DHT status                                               │</span>
-<span class="k-b">│                                  ││   /bootstrap &lt;host:port&gt;  add DHT bootstrap node                                 │</span>
-<span class="k-b">│                                  ││   /close                back to console                                          │</span>
-<span class="k-b">│                                  ││   /update               check GitHub for updates &amp; install                       │</span>
-<span class="k-b">│                                  ││   /version              show version info                                        │</span>
-<span class="k-b">│                                  ││   /quit                 exit                                                     │</span>
-<span class="k-b">│                                  ││ any other text is sent to the open chat                                          │</span>
-<span class="k-b">│                                  ││ PgUp/PgDn, arrows, wheel: scroll console/chat                                    │</span>
-<span class="k-b">│                                  ││   ( ) bob  127.0.0.1:5556                                                        │</span>
-<span class="k-b">│                                  ││ dht nodes known: 0                                                               │</span>
-<span class="k-b">│                                  ││ records stored:  1                                                               │</span>
-<span class="k-b">│                                  ││ no public endpoint observed yet (behind NAT or no DHT contact)                   │</span>
-<span class="k-b">│                                  ││ peer id: f6ee0e177476788c20210f0f5aa446fc28a90d38df219405fb83ab8f036a835b        │</span>
-<span class="k-b">│                                  ││ short:   f6ee0e177476788c                                                        │</span>
-<span class="k-b">│                                  ││ peer id copied to clipboard                                                      │</span>
-<span class="k-b">│                                  ││ dht:     [::]:5555 (UDP)                                                         │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">│                                  ││                                                                                  │</span>
-<span class="k-b">╰──────────────────────────────────╯╰──────────────────────────────────────────────────────────────────────────────────╯</span>
+        <figure class="shot ticks" data-slot="chat" data-kind="product" data-alt="The Radius Chats tab: bob online, two end-to-end encrypted messages exchanged">
+          <pre class="scr" role="img" aria-label="Radius Chats tab: bob online, two end-to-end encrypted messages exchanged">
+<span class="k-gray">────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="k-b"> Radius</span><span class="k-b"> v0.4.2</span><span class="k-yellow k-b"> L3</span><span class="k-gray"> ai</span>                                             <span class="k-gray">me:alice  fp:91908ef255cdd2f2  tcp:5555  udp:5555  ip:203.0.113.7  loc:Odesa,UA</span>
+<span class="k-gray"> Main </span><span class="k-gray"> │ </span><span class="k-gray"> Logs </span><span class="k-gray"> │ </span><span class="k-cyan k-b"> Chats </span><span class="k-gray"> │ </span><span class="k-gray"> Settings </span>                                                                                                          
+<span class="k-b">╭</span><span class="k-yellow"> Contacts </span><span class="k-b">──────────────────────╮</span><span class="k-b">╭</span><span class="k-green k-b"> bob </span><span class="k-gray"> online </span><span class="k-b">───────────────────────────────────────────────────────────────────────────────────────────────╮</span>
+<span class="k-b">│</span> <span class="k-green">● </span><span class="k-cyan k-b">bob</span>           <span class="k-gray">127.0.0.1:5556</span> <span class="k-b">│</span><span class="k-b">│</span><span class="k-green k-b">you: </span><span class="k-b">hey bob, this is E2EE</span>                                                                               <span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-cyan k-b">bob: </span><span class="k-b">hi alice, loud and clear</span>                                                                               <span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">│</span><span class="k-b">                                </span><span class="k-b">│</span><span class="k-b">│</span><span class="k-b">                                                                                                            </span><span class="k-b">│</span>
+<span class="k-b">╰</span><span class="k-b">────────────────────────────────╯</span><span class="k-b">╰</span><span class="k-b">────────────────────────────────────────────────────────────────────────────────────────────────────────────╯</span>
 <span class="k-cyan k-b"> ❯ </span><span class="k-b">command or message (/help)</span>
-<span class="k-gray k-b">/help for commands | PgUp/PgDn/wheel: scroll</span>
-</pre>        </figure>
+<span class="k-gray">Enter: send | /close: back | Tab: switch view</span>
+</pre>
+        </figure>
       </div>
     </div>
   </section>
@@ -294,19 +367,21 @@
 
 <footer>
   <div class="container">
-    <p class="mast">p2p</p>
+    <p class="mast">radius</p>
     <div class="foot-links">
       <a href="https://github.com/immersedin/enB" rel="noopener">GitHub</a>
       <a href="https://github.com/immersedin/enB/releases" rel="noopener">Releases</a>
+      <a href="#danger">Danger</a>
       <a href="#protocol">Protocol</a>
       <a href="#commands">Commands</a>
       <a href="#platforms">Platforms</a>
     </div>
-    <p class="foot-note">P2P Secure Chat. Noise XX, Double Ratchet, Kademlia DHT, SQLCipher. Screens captured from a live session on loopback.</p>
+    <p class="foot-note">Radius. Civilian danger levels, tracked cities, AI assessment, Noise XX, Double Ratchet, Kademlia DHT, SQLCipher. Screens are stylized captures of the TUI.</p>
   </div>
 </footer>
 
 <script src="./cloud.js" defer></script>
+<script src="./radar.js" defer></script>
 <script>
 window.hallmarkSlots = (m) => { for (const [k, v] of Object.entries(m)) { const s = document.querySelector(`[data-slot="${k}"]`); if (!s) continue; const im = new Image(); im.src = typeof v === 'string' ? v : v.src; im.alt = (typeof v === 'object' && v.alt) || s.dataset.alt || ''; s.querySelectorAll(':scope > img').forEach((o) => o.remove()); s.prepend(im); } };
 document.querySelectorAll('[data-slot] img').forEach((i) => { if (i.complete && !i.naturalWidth) i.remove(); else i.addEventListener('error', () => i.remove(), { once: true }); });

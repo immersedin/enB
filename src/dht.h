@@ -21,7 +21,7 @@
 struct Identity;  // defined in net.h — Dht only needs it for signing
 
 // A signed, self-describing peer record stored in the DHT under
-// SHA256("p2p-peer-v1" || peer_id). Contains everything needed to reach
+// SHA256("radius-peer-v1" || peer_id). Contains everything needed to reach
 // the peer's chat listener; the Ed25519 signature makes the record
 // unforgeable, while the Noise handshake later proves possession of the
 // matching X25519 static key.

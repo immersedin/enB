@@ -81,7 +81,7 @@ bool read_frame(tcp::socket& sock, crypto::Bytes& data) {
 // Handshake payload (carried inside the Noise-encrypted payload):
 //   u16le name_len | name | ed25519_pub(32) | sig(64) | ratchet_pub(32)
 //
-// sig = Ed25519_sign( "p2p-id-v1" || x25519_pub || ed25519_pub [|| peer_x25519_pub] )
+// sig = Ed25519_sign( "radius-id-v1" || x25519_pub || ed25519_pub [|| peer_x25519_pub] )
 // The initiator includes the responder's X25519 pub (already learned
 // from msg2) so the responder can bind the signature to this peer.
 // Noise's DH tokens already authenticate both static keys.
@@ -91,7 +91,7 @@ crypto::Bytes build_sig_message(const crypto::Key32& x_pub,
                                 const crypto::Key32& ed_pub,
                                 const crypto::Key32* peer_x_pub) {
     crypto::Bytes m;
-    const char* domain = "p2p-id-v1";
+    const char* domain = "radius-id-v1";
     m.insert(m.end(), domain, domain + 8);
     m.insert(m.end(), x_pub.begin(), x_pub.end());
     m.insert(m.end(), ed_pub.begin(), ed_pub.end());
@@ -154,7 +154,7 @@ bool verify_identity_sig(const ParsedPayload& parsed,
 crypto::Key32 derive_ratchet_root(const crypto::NoiseXX& noise) {
     crypto::Key32 root{};
     crypto::hkdf_sha256(noise.handshake_hash().data(), 32,
-                        noise.chaining_key().data(), 32, "p2p-dr-root-v1",
+                        noise.chaining_key().data(), 32, "radius-dr-root-v1",
                         root.data(), 32);
     return root;
 }

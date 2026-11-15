@@ -6,8 +6,8 @@
 
 namespace {
 
-constexpr char kInviteMagic[] = "P2PI1";
-constexpr size_t kInviteMagicLen = 5;
+constexpr char kInviteMagic[] = "RADIUSINV1";
+constexpr size_t kInviteMagicLen = 11;
 constexpr size_t kMaxInviteSize = 2048;
 constexpr size_t kMaxHints = 8;
 

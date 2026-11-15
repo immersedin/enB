@@ -1,25 +1,25 @@
 #!/bin/bash
-# Bundle the p2p binary as a self-contained p2p.app: the executable plus
+# Bundle the radius binary as a self-contained Radius.app: the executable plus
 # its Homebrew dylib dependencies and an Info.plist describing the app
 # to macOS (name, version, bundle id). Ad-hoc signed — enough for local
 # use; Gatekeeper still warns until a Developer ID signature + notarization
 # is added.
 #
-# Usage: ./scripts/package_macos.sh [path/to/p2p] [output-dir] [version]
+# Usage: ./scripts/package_macos.sh [path/to/radius] [output-dir] [version]
 set -euo pipefail
 
-BIN="${1:-build/p2p}"
-OUT="${2:-dist/p2p-macos-$(uname -m)}"
+BIN="${1:-build/radius}"
+OUT="${2:-dist/radius-macos-$(uname -m)}"
 VERSION="${3:-0.0.0}"
 
-APP="$OUT/p2p.app"
+APP="$OUT/Radius.app"
 RES="$APP/Contents/Resources"
 MACOS_DIR="$APP/Contents/MacOS"
 
 rm -rf "$OUT"
 mkdir -p "$RES" "$MACOS_DIR"
-cp "$BIN" "$MACOS_DIR/p2p"
-chmod +x "$MACOS_DIR/p2p"
+cp "$BIN" "$MACOS_DIR/radius"
+chmod +x "$MACOS_DIR/radius"
 
 cat > "$APP/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -29,13 +29,15 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleExecutable</key>
-    <string>p2p</string>
+    <string>radius</string>
     <key>CFBundleIdentifier</key>
     <string>com.github.immersedin.enb</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>p2p</string>
+    <string>Radius</string>
+    <key>CFBundleDisplayName</key>
+    <string>Radius</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -47,7 +49,7 @@ cat > "$APP/Contents/Info.plist" <<EOF
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSLocationWhenInUseUsageDescription</key>
-    <string>P2P Secure Chat uses your location to show where you are in the app.</string>
+    <string>Radius uses your location to show where you are in the app.</string>
 </dict>
 </plist>
 EOF
@@ -113,7 +115,7 @@ done < <(find "$RES" "$MACOS_DIR" -type f)
 find "$RES" -type f | while IFS= read -r f; do
     codesign --force --sign - "$f" 2>/dev/null || true
 done
-codesign --force --sign - "$MACOS_DIR/p2p" 2>/dev/null || true
+codesign --force --sign - "$MACOS_DIR/radius" 2>/dev/null || true
 codesign --force --sign - "$APP" 2>/dev/null || true
 
 echo "Packaged: $APP"

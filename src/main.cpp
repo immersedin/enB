@@ -1,4 +1,4 @@
-// P2P Secure Chat — FTXUI frontend.
+// Radius — FTXUI frontend.
 //
 // Security stack:
 //   - Noise_XX_25519_ChaChaPoly_SHA256 handshake (mutual auth via DH)
@@ -250,7 +250,7 @@ int pane_rows() {
 // Copy `text` to the OS clipboard via a platform tool. The payload goes
 // through a temp file so no shell escaping of the text is needed.
 bool copy_to_clipboard(const std::string& text) {
-    fs::path tmp = fs::temp_directory_path() / "p2p-chat-clipboard.txt";
+    fs::path tmp = fs::temp_directory_path() / "radius-clipboard.txt";
     {
         std::ofstream f(tmp, std::ios::trunc);
         f << text << "\n";
@@ -2826,7 +2826,7 @@ Element console_line_element(const std::string& l) {
 Element render_console(const ChatApp& app) {
     std::vector<Element> all;
     if (app.console.empty()) {
-        all.push_back(text("P2P Secure Chat") | bold |
+        all.push_back(text("Radius") | bold |
                       color(Color::Cyan));
         all.push_back(text("type /help for commands") |
                       color(Color::GrayDark));
@@ -3329,7 +3329,7 @@ int main(int argc, char** argv) {
             data_dir_override = a.substr(11);
         }
     }
-    if (const char* env = std::getenv("P2P_DATA_DIR"))
+    if (const char* env = std::getenv("RADIUS_DATA_DIR"))
         if (data_dir_override.empty()) data_dir_override = env;
 
     if (sodium_init() < 0) {
@@ -3344,7 +3344,7 @@ int main(int argc, char** argv) {
     std::string data_dir =
         !data_dir_override.empty()
             ? data_dir_override
-            : std::string(home ? home : ".") + "/.p2p-chat";
+            : std::string(home ? home : ".") + "/.radius";
     Config config = load_config(data_dir + "/config.ini");
     if (config.port <= 0 || config.port > 65535) config.port = 5555;
     // UDP and TCP port spaces are separate: by default the DHT shares
@@ -3830,7 +3830,7 @@ int main(int argc, char** argv) {
             badge = text(" loading") | color(Color::Cyan);
         }
         return hbox({
-            text(" P2P Secure Chat") | bold | color(Color::Cyan),
+            text(" Radius") | bold | color(Color::Cyan),
             text(" v" APP_VERSION) | dim,
             badge,
             filler(),

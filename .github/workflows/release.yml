@@ -65,13 +65,13 @@ jobs:
       - name: Self-test (macOS)
         if: runner.os == 'macOS'
         timeout-minutes: 10
-        run: ./build/p2p --selftest
+        run: ./build/radius --selftest
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          ./scripts/package_macos.sh build/p2p "dist/p2p-${{ matrix.name }}" "${GITHUB_REF_NAME#v}"
-          cd dist && ditto -c -k --keepParent "p2p-${{ matrix.name }}/p2p.app" "p2p-${{ matrix.name }}.zip"
+          ./scripts/package_macos.sh build/radius "dist/radius-${{ matrix.name }}" "${GITHUB_REF_NAME#v}"
+          cd dist && ditto -c -k --keepParent "radius-${{ matrix.name }}/Radius.app" "radius-${{ matrix.name }}.zip"
 
       - name: Configure and build (Windows)
         if: runner.os == 'Windows'
@@ -87,18 +87,18 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         timeout-minutes: 10
-        run: ./build/Release/p2p.exe --selftest
+        run: ./build/Release/radius.exe --selftest
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Compress-Archive -Path build/Release/p2p.exe -DestinationPath "dist/p2p-${{ matrix.name }}.zip"
+          Compress-Archive -Path build/Release/radius.exe -DestinationPath "dist/radius-${{ matrix.name }}.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: p2p-${{ matrix.name }}
+          name: radius-${{ matrix.name }}
           path: dist/*.zip
           if-no-files-found: error
 
@@ -120,12 +120,12 @@ jobs:
           TAG="${GITHUB_REF_NAME}"
           TARBALL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
           SHA=$(curl -sL "$TARBALL" | sha256sum | cut -d' ' -f1)
-          sed -i -E "s|url \"[^\"]+\"|url \"${TARBALL}\"|; s|sha256 \"[0-9a-f]+\"|sha256 \"${SHA}\"|" Formula/p2p.rb
+          sed -i -E "s|url \"[^\"]+\"|url \"${TARBALL}\"|; s|sha256 \"[0-9a-f]+\"|sha256 \"${SHA}\"|" Formula/radius.rb
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Formula/p2p.rb
+          git add Formula/radius.rb
           git diff --cached --quiet || {
-            git commit -m "p2p ${TAG}"
+            git commit -m "radius ${TAG}"
             git push origin HEAD:main
           }
 
