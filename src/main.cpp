@@ -522,7 +522,7 @@ std::string format_age(int64_t ts) {
 Color level_color(int level) {
     switch (level) {
         case 1: return Color::Red;
-        case 2: return Color::RGB(255, 140, 0);
+        case 2: return (Color::RGB)(255, 140, 0);
         case 3: return Color::Yellow;
         case 4: return Color::Green;
         default: return Color::GrayDark;
